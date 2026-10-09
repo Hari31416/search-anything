@@ -1,6 +1,6 @@
 # Search Anything build plan
 
-Status: implementation in progress. Phases 0 and 1 are complete; phase 2 is underway.
+Status: implementation in progress. Phases 0–2 are complete; phase 3 is underway.
 
 Updated: 2026-10-09.
 
@@ -225,15 +225,17 @@ Use small local fixtures to check functional correctness, independent of the lat
   jobs, probing, and the single-owner inference scheduler are implemented and
   covered by unit and live integration checks. Details and run commands are in
   `docs/backend-foundation.md`.
-- Phase 2 in progress. Text, Markdown, HTML, PDF, DOCX, Python source, and image
+- Phase 2 complete. Text, Markdown, HTML, PDF, DOCX, Python source, and image
   uploads now run through local structural extraction, OCR where needed,
   tokenizer-bounded segmentation, normalized EmbeddingGemma vectors, lexical
   indexing, and atomic generation activation. Local FFmpeg, Whisper tiny, and
   EmbeddingGemma now index audio/video windows, timed transcripts, sampled
   video frames, and OCR spans. Media presets, validated per-generation window
-  and sampling overrides, missing-audio handling, source timestamps, and frame
-  limits are covered by live and deterministic checks. Profile management and
-  retry/cancel/reprocess endpoints remain to complete phase 2.
+  and sampling overrides, missing-audio handling, source timestamps, frame
+  limits, immutable profiles, retry/cancel/reprocess, and generation state
+  preservation are covered by live and deterministic checks.
+- Phase 3 underway. Search API and retrieval will use the worker's single-owner
+  inference scheduler over local IPC; no model copy will be loaded by the API.
 
 ## Planning sources
 

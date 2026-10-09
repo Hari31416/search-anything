@@ -4,8 +4,10 @@ import { Header } from '@/components/header'
 import { SearchTab } from '@/components/search/SearchTab'
 import { LibraryTab } from '@/components/library/LibraryTab'
 import { ProfilesTab } from '@/components/profiles/ProfilesTab'
+import { installExclusivePlayback } from '@/lib/media-playback'
 
 export function App() {
+  React.useEffect(() => installExclusivePlayback(), [])
   const [activeTab, setActiveTab] = React.useState<
     'search' | 'library' | 'profiles'
   >('search')

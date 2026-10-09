@@ -24,15 +24,16 @@ import type { SearchResult, Asset } from '@/types/api'
 interface SearchResultGridCardProps {
   result: SearchResult
   rank: number
+  showMediaText: boolean
   onPreviewAsset: (asset: Asset, initialSeek?: number | null) => void
 }
 
 export function SearchResultGridCard({
   result,
   rank,
+  showMediaText,
   onPreviewAsset,
 }: SearchResultGridCardProps) {
-  const [isPlaying, setIsPlaying] = React.useState(false)
   const [imageError, setImageError] = React.useState(false)
   const mediaRef = React.useRef<HTMLMediaElement | null>(null)
 
@@ -68,10 +69,7 @@ export function SearchResultGridCard({
     e.stopPropagation()
     if (mediaRef.current) {
       mediaRef.current.currentTime = seconds
-      mediaRef.current
-        .play()
-        .then(() => setIsPlaying(true))
-        .catch(() => {})
+      mediaRef.current.play().catch(() => {})
     } else {
       onPreviewAsset(asAsset, seconds)
     }
@@ -111,7 +109,10 @@ export function SearchResultGridCard({
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
           </div>
         ) : category === 'video' ? (
-          <div className="relative h-full w-full bg-black">
+          <div
+            className="relative h-full w-full bg-black"
+            onClick={(e) => e.stopPropagation()}
+          >
             <video
               ref={(el) => {
                 mediaRef.current = el
@@ -119,17 +120,9 @@ export function SearchResultGridCard({
               src={contentUrl}
               preload="metadata"
               playsInline
+              controls
               className="h-full w-full object-cover"
-              onPlay={() => setIsPlaying(true)}
-              onPause={() => setIsPlaying(false)}
             />
-            {!isPlaying && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/30 transition-colors group-hover:bg-black/10">
-                <div className="flex size-11 items-center justify-center rounded-full bg-white/90 text-black shadow-lg backdrop-blur-xs transition-transform group-hover:scale-110">
-                  <Play className="ml-0.5 size-5 fill-current" />
-                </div>
-              </div>
-            )}
           </div>
         ) : category === 'audio' ? (
           <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-sky-950/20 via-background to-sky-950/10 p-4 text-center">
@@ -152,9 +145,10 @@ export function SearchResultGridCard({
               }}
               src={contentUrl}
               preload="metadata"
-              className="hidden"
-              onPlay={() => setIsPlaying(true)}
-              onPause={() => setIsPlaying(false)}
+              controls
+              aria-label={`Play ${result.filename}`}
+              className="mt-4 h-8 w-full"
+              onClick={(e) => e.stopPropagation()}
             />
           </div>
         ) : (
@@ -226,16 +220,17 @@ export function SearchResultGridCard({
           </h4>
 
           {/* Matched Snippet (OCR / Speech transcript / text) */}
-          {primarySnippet ? (
+          {primarySnippet &&
+          (showMediaText || category === 'document' || category === 'other') ? (
             <p className="line-clamp-2 rounded bg-muted/40 px-2 py-1 text-[11px] leading-relaxed text-muted-foreground select-text">
               &ldquo;{primarySnippet}&rdquo;
             </p>
-          ) : (
+          ) : !primarySnippet ? (
             <p className="text-[11px] text-muted-foreground/80 italic">
               Visual / embedding match ({result.matches.length}{' '}
               {result.matches.length === 1 ? 'match span' : 'match spans'})
             </p>
-          )}
+          ) : null}
         </div>
 
         {/* Temporal Timestamps (for video and audio matches) */}

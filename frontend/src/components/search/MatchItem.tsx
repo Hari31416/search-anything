@@ -8,11 +8,17 @@ import type { SearchMatch, RepresentationHit } from '@/types/api'
 interface MatchItemProps {
   match: SearchMatch
   index: number
+  showText: boolean
   onPlayTimestamp?: (seconds: number) => void
   onOpenSource?: () => void
 }
 
-export function MatchItem({ match, index, onPlayTimestamp }: MatchItemProps) {
+export function MatchItem({
+  match,
+  index,
+  showText,
+  onPlayTimestamp,
+}: MatchItemProps) {
   const [showEvidence, setShowEvidence] = React.useState(false)
 
   const preview = getMatchPreview(match)
@@ -69,15 +75,15 @@ export function MatchItem({ match, index, onPlayTimestamp }: MatchItemProps) {
       </div>
 
       {/* Matched text rendered safely */}
-      {primaryText ? (
+      {primaryText && showText ? (
         <div className="rounded-md bg-muted/40 p-2.5 font-sans text-xs leading-relaxed text-foreground select-text">
           &ldquo;{primaryText}&rdquo;
         </div>
-      ) : (
+      ) : !primaryText ? (
         <div className="text-xs text-muted-foreground italic">
           Visual or acoustic match without direct transcript/OCR text
         </div>
-      )}
+      ) : null}
 
       {/* Channel contribution badges */}
       <div className="flex flex-wrap items-center gap-1 text-[10px]">

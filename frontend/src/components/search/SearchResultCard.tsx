@@ -19,12 +19,14 @@ import type { SearchResult, Asset } from '@/types/api'
 interface SearchResultCardProps {
   result: SearchResult
   rank: number
+  showMediaText: boolean
   onPreviewAsset: (assetSummary: Asset, initialSeek?: number | null) => void
 }
 
 export function SearchResultCard({
   result,
   rank,
+  showMediaText,
   onPreviewAsset,
 }: SearchResultCardProps) {
   const [showInlinePreview, setShowInlinePreview] = React.useState(true)
@@ -251,6 +253,9 @@ export function SearchResultCard({
               key={mIdx}
               match={match}
               index={mIdx}
+              showText={
+                showMediaText || category === 'document' || category === 'other'
+              }
               onPlayTimestamp={handlePlayTimestamp}
               onOpenSource={() => onPreviewAsset(asAsset)}
             />

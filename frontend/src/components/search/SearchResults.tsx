@@ -35,6 +35,7 @@ export function SearchResults({
 }: SearchResultsProps) {
   const [viewMode, setViewMode] = React.useState<'grid' | 'list'>('grid')
   const [showQueryDetails, setShowQueryDetails] = React.useState(false)
+  const [showMediaText, setShowMediaText] = React.useState(false)
 
   if (loading) {
     return (
@@ -210,38 +211,53 @@ export function SearchResults({
         </div>
 
         {/* View Switcher: Media Grid vs Detailed List */}
-        <div className="flex items-center gap-1 rounded-lg border border-border bg-muted/40 p-0.5">
-          <Button
-            type="button"
-            variant="ghost"
-            size="xs"
-            onClick={() => setViewMode('grid')}
-            className={`gap-1.5 px-2.5 py-1 text-xs font-medium transition-all ${
-              viewMode === 'grid'
-                ? 'bg-background text-foreground shadow-2xs'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-            title="Media Gallery Grid View"
-          >
-            <LayoutGrid className="size-3.5" />
-            <span className="hidden sm:inline">Media Grid</span>
-          </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {results.some((result) =>
+            /^(image|audio|video)\//.test(result.content_type)
+          ) && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              aria-pressed={showMediaText}
+              onClick={() => setShowMediaText((previous) => !previous)}
+            >
+              {showMediaText ? 'Hide' : 'Show'} OCR &amp; transcripts
+            </Button>
+          )}
+          <div className="flex items-center gap-1 rounded-lg border border-border bg-muted/40 p-0.5">
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              onClick={() => setViewMode('grid')}
+              className={`gap-1.5 px-2.5 py-1 text-xs font-medium transition-all ${
+                viewMode === 'grid'
+                  ? 'bg-background text-foreground shadow-2xs'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+              title="Media Gallery Grid View"
+            >
+              <LayoutGrid className="size-3.5" />
+              <span className="hidden sm:inline">Media Grid</span>
+            </Button>
 
-          <Button
-            type="button"
-            variant="ghost"
-            size="xs"
-            onClick={() => setViewMode('list')}
-            className={`gap-1.5 px-2.5 py-1 text-xs font-medium transition-all ${
-              viewMode === 'list'
-                ? 'bg-background text-foreground shadow-2xs'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-            title="Detailed List View"
-          >
-            <List className="size-3.5" />
-            <span className="hidden sm:inline">Detailed List</span>
-          </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              onClick={() => setViewMode('list')}
+              className={`gap-1.5 px-2.5 py-1 text-xs font-medium transition-all ${
+                viewMode === 'list'
+                  ? 'bg-background text-foreground shadow-2xs'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+              title="Detailed List View"
+            >
+              <List className="size-3.5" />
+              <span className="hidden sm:inline">Detailed List</span>
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -264,6 +280,7 @@ export function SearchResults({
               key={result.asset_id}
               result={result}
               rank={index + 1}
+              showMediaText={showMediaText}
               onPreviewAsset={onPreviewAsset}
             />
           ))}
@@ -275,6 +292,7 @@ export function SearchResults({
               key={result.asset_id}
               result={result}
               rank={index + 1}
+              showMediaText={showMediaText}
               onPreviewAsset={onPreviewAsset}
             />
           ))}

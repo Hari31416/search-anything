@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api'
+import { pauseOtherMedia } from '@/lib/media-playback'
 import { formatBytes, formatDuration, getMimeCategory } from '@/lib/formatters'
 import type { Asset } from '@/types/api'
 
@@ -45,6 +46,7 @@ export function SourcePreviewModal({
   React.useEffect(() => {
     setPlaybackError(false)
     if (asset && open) {
+      pauseOtherMedia()
       api
         .getPresignedUrl(asset.id)
         .then((res) => setPresignedUrl(res.url))
@@ -64,7 +66,6 @@ export function SourcePreviewModal({
     ) {
       try {
         mediaRef.current.currentTime = initialSeekSeconds
-        mediaRef.current.play().catch(() => {})
       } catch {
         // Seek failed or not ready
       }
@@ -182,7 +183,6 @@ export function SourcePreviewModal({
                 }}
                 src={contentUrl}
                 controls
-                autoPlay
                 onLoadedMetadata={onLoadedMetadata}
                 onError={() => setPlaybackError(true)}
                 className="max-h-[65vh] w-full rounded-xl bg-black object-contain shadow-xl"
@@ -216,7 +216,6 @@ export function SourcePreviewModal({
                 }}
                 src={contentUrl}
                 controls
-                autoPlay
                 onLoadedMetadata={onLoadedMetadata}
                 onError={() => setPlaybackError(true)}
                 className="w-full max-w-lg"

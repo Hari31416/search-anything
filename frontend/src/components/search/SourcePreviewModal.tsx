@@ -60,7 +60,7 @@ export function SourcePreviewModal({
       mediaRef.current &&
       initialSeekSeconds !== null &&
       initialSeekSeconds !== undefined &&
-      initialSeekSeconds > 0
+      initialSeekSeconds >= 0
     ) {
       try {
         mediaRef.current.currentTime = initialSeekSeconds
@@ -162,7 +162,7 @@ export function SourcePreviewModal({
         {/* Timestamp seek notification pill */}
         {initialSeekSeconds !== null &&
           initialSeekSeconds !== undefined &&
-          initialSeekSeconds > 0 && (
+          initialSeekSeconds >= 0 && (
             <div className="flex animate-in items-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-3.5 py-2 text-xs font-medium text-primary fade-in-50">
               <Clock className="size-4 shrink-0" />
               <span>

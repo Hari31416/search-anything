@@ -12,17 +12,24 @@ import {
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { formatDuration, formatScore, getMimeCategory } from '@/lib/formatters'
+import {
+  formatDuration,
+  formatTimeRange,
+  getMimeCategory,
+} from '@/lib/formatters'
+import { getMatchPreview } from '@/lib/match-preview'
 import { api } from '@/lib/api'
 import type { SearchResult, Asset } from '@/types/api'
 
 interface SearchResultGridCardProps {
   result: SearchResult
+  rank: number
   onPreviewAsset: (asset: Asset, initialSeek?: number | null) => void
 }
 
 export function SearchResultGridCard({
   result,
+  rank,
   onPreviewAsset,
 }: SearchResultGridCardProps) {
   const [isPlaying, setIsPlaying] = React.useState(false)
@@ -45,31 +52,17 @@ export function SearchResultGridCard({
     active_generation_id: result.generation_id,
   }
 
-  // Find best primary text snippet from matches (e.g. OCR or transcript)
-  let primarySnippet: string | null = null
-  for (const match of result.matches) {
-    for (const rep of match.representations) {
-      if (rep.text && rep.text.trim().length > 0) {
-        primarySnippet = rep.text.trim()
-        break
-      }
-    }
-    if (primarySnippet) break
-  }
-
-  // Extract distinct temporal timestamps for video/audio matches
-  const allTimeMarkers: { start: number; end: number | null; score: number }[] =
-    []
-  for (const match of result.matches) {
-    if (match.time_start !== null) {
-      allTimeMarkers.push({
-        start: match.time_start,
-        end: match.time_end,
-        score: match.score,
-      })
-    }
-  }
-  const timeMarkers = allTimeMarkers.slice(0, 4)
+  const previews = result.matches.map(getMatchPreview)
+  const primarySnippet = previews.find((preview) => preview.text)?.text ?? null
+  const timeMarkers =
+    category === 'audio' || category === 'video'
+      ? previews
+          .filter(
+            (preview): preview is typeof preview & { start: number } =>
+              preview.start !== null
+          )
+          .slice(0, 4)
+      : []
 
   const handlePlayFrom = (e: React.MouseEvent, seconds: number) => {
     e.stopPropagation()
@@ -183,9 +176,13 @@ export function SearchResultGridCard({
           </span>
         </div>
 
-        {/* Top Right Fused Score Floating Pill */}
-        <div className="absolute top-2.5 right-2.5 flex items-center gap-1 rounded-md border border-white/20 bg-black/70 px-2 py-0.5 text-[11px] font-bold text-white shadow-xs backdrop-blur-md">
-          <span className="font-mono">{formatScore(result.score)}</span>
+        {/* Result rank */}
+        <div
+          className="absolute top-2.5 right-2.5 flex items-center gap-1 rounded-md border border-white/20 bg-black/70 px-2 py-0.5 text-[11px] font-bold text-white shadow-xs backdrop-blur-md"
+          aria-label={`Result rank ${rank}`}
+          title={`Result rank ${rank}`}
+        >
+          <span className="font-mono">#{rank}</span>
         </div>
 
         {/* Hover Quick Action Buttons */}
@@ -246,7 +243,7 @@ export function SearchResultGridCard({
           <div className="mt-3 space-y-1 border-t border-border/50 pt-2.5">
             <div className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
               <Clock className="size-2.5" />
-              <span>Matched Moments:</span>
+              <span>Matched ranges:</span>
             </div>
             <div className="flex flex-wrap gap-1">
               {timeMarkers.map((m, idx) => (
@@ -258,7 +255,7 @@ export function SearchResultGridCard({
                   title={`Jump to ${formatDuration(m.start)}`}
                 >
                   <Play className="size-2 fill-current" />
-                  <span>{formatDuration(m.start)}</span>
+                  <span>{formatTimeRange(m.start, m.end)}</span>
                 </button>
               ))}
             </div>

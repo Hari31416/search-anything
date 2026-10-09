@@ -2,6 +2,7 @@ import * as React from 'react'
 import { Clock, Play, FileText, ChevronDown, ChevronRight } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { formatScore, formatTimeRange } from '@/lib/formatters'
+import { getMatchPreview } from '@/lib/match-preview'
 import type { SearchMatch, RepresentationHit } from '@/types/api'
 
 interface MatchItemProps {
@@ -14,7 +15,8 @@ interface MatchItemProps {
 export function MatchItem({ match, index, onPlayTimestamp }: MatchItemProps) {
   const [showEvidence, setShowEvidence] = React.useState(false)
 
-  const isTemporal = match.time_start !== null && match.time_end !== null
+  const preview = getMatchPreview(match)
+  const isTemporal = preview.start !== null
   const hasPage = match.representations.some(
     (r) => r.location && r.location.page !== undefined
   )
@@ -23,9 +25,7 @@ export function MatchItem({ match, index, onPlayTimestamp }: MatchItemProps) {
   )?.location.page
 
   // Extract best text from representations (prioritizing non-empty text)
-  const primaryText =
-    match.representations.find((r) => r.text && r.text.trim().length > 0)
-      ?.text || null
+  const primaryText = preview.text
 
   return (
     <div className="space-y-2.5 rounded-lg border border-border/70 bg-card/60 p-3.5 transition-all hover:border-primary/40">
@@ -38,11 +38,11 @@ export function MatchItem({ match, index, onPlayTimestamp }: MatchItemProps) {
           {isTemporal ? (
             <div className="flex items-center gap-1.5 rounded-full bg-sky-500/10 px-2.5 py-0.5 text-xs font-medium text-sky-600 dark:text-sky-400">
               <Clock className="size-3" />
-              <span>{formatTimeRange(match.time_start, match.time_end)}</span>
-              {onPlayTimestamp && match.time_start !== null && (
+              <span>{formatTimeRange(preview.start, preview.end)}</span>
+              {onPlayTimestamp && preview.start !== null && (
                 <button
                   type="button"
-                  onClick={() => onPlayTimestamp(match.time_start!)}
+                  onClick={() => onPlayTimestamp(preview.start!)}
                   className="ml-1 flex items-center gap-0.5 rounded px-1 text-[10px] font-semibold hover:bg-sky-500/20"
                   title="Play from this moment"
                 >
@@ -65,15 +65,6 @@ export function MatchItem({ match, index, onPlayTimestamp }: MatchItemProps) {
                 offsets {match.source_start}–{match.source_end}
               </span>
             )}
-        </div>
-
-        <div className="flex items-center gap-1.5 rounded-md border border-border/80 bg-muted/50 px-2.5 py-1">
-          <span className="text-[10px] font-semibold text-muted-foreground uppercase">
-            Rank Score
-          </span>
-          <span className="font-mono text-xs font-bold text-foreground">
-            {formatScore(match.score)}
-          </span>
         </div>
       </div>
 
@@ -124,6 +115,9 @@ export function MatchItem({ match, index, onPlayTimestamp }: MatchItemProps) {
 
         {showEvidence && (
           <div className="mt-2.5 animate-in space-y-2 rounded-md border border-border/80 bg-background/80 p-3 text-xs duration-150 fade-in-50">
+            <div className="font-mono text-[11px] text-muted-foreground">
+              RRF score: {formatScore(match.score)}
+            </div>
             {/* Representations details */}
             <div className="space-y-1.5">
               <span className="text-[10px] font-bold tracking-wider text-muted-foreground uppercase">

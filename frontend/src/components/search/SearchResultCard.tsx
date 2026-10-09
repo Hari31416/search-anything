@@ -12,17 +12,19 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { MatchItem } from '@/components/search/MatchItem'
-import { formatScore, getMimeCategory } from '@/lib/formatters'
+import { getMimeCategory } from '@/lib/formatters'
 import { api } from '@/lib/api'
 import type { SearchResult, Asset } from '@/types/api'
 
 interface SearchResultCardProps {
   result: SearchResult
+  rank: number
   onPreviewAsset: (assetSummary: Asset, initialSeek?: number | null) => void
 }
 
 export function SearchResultCard({
   result,
+  rank,
   onPreviewAsset,
 }: SearchResultCardProps) {
   const [showInlinePreview, setShowInlinePreview] = React.useState(true)
@@ -99,14 +101,17 @@ export function SearchResultCard({
         </div>
 
         <div className="flex items-center gap-2.5">
-          {/* Prominent Fused Score Badge */}
-          <div className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-1.5 shadow-2xs">
+          {/* Result rank */}
+          <div
+            className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-1.5 shadow-2xs"
+            aria-label={`Result rank ${rank}`}
+          >
             <div className="flex flex-col">
               <span className="text-[9px] leading-none font-bold tracking-wider text-muted-foreground uppercase">
-                Fused Score
+                Rank
               </span>
               <span className="font-mono text-sm leading-tight font-extrabold text-primary sm:text-base">
-                {formatScore(result.score)}
+                #{rank}
               </span>
             </div>
           </div>

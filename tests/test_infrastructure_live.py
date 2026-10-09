@@ -14,7 +14,7 @@ from uuid import UUID, uuid4
 import httpx
 from PIL import Image, ImageDraw
 import pytest
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from search_anything.api import create_app
@@ -34,10 +34,11 @@ from search_anything.models import (
     ProcessingGeneration,
     Representation,
     Segment,
+    Workspace,
 )
-from search_anything.settings import Settings
 from search_anything.storage import S3ObjectStorage
 from search_anything.worker import Worker
+from integration_config import integration_settings
 
 pytestmark = [
     pytest.mark.skipif(
@@ -51,11 +52,8 @@ pytestmark = [
 async def test_live_upload_ranges_presigned_jobs_generation_and_cleanup(
     tmp_path: Path,
 ) -> None:
-    settings = Settings(
-        default_workspace_id=uuid4(),
-        default_workspace_name="Integration",
-        model_socket_path=Path("/tmp") / f"sa-{uuid4().hex[:8]}" / "model.sock",
-    )
+    settings = integration_settings()
+    settings.model_socket_path = Path("/tmp") / f"sa-{uuid4().hex[:8]}" / "model.sock"
     engine = make_engine(settings)
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     storage = S3ObjectStorage(settings)
@@ -1019,4 +1017,25 @@ async def test_live_upload_ranges_presigned_jobs_generation_and_cleanup(
                 ).status_code == 404
                 await worker.scheduler.close()
     finally:
-        await engine.dispose()
+        try:
+            # Remove this run's workspace even when an assertion fails. These
+            # targets have already passed the isolated-test configuration guard.
+            prefix = f"workspaces/{settings.default_workspace_id}/"
+            pages = await asyncio.to_thread(
+                lambda: list(
+                    storage.client.get_paginator("list_objects_v2").paginate(
+                        Bucket=storage.bucket, Prefix=prefix
+                    )
+                )
+            )
+            for page in pages:
+                for item in page.get("Contents", []):
+                    await storage.delete_object(item["Key"])
+            async with engine.begin() as connection:
+                await connection.execute(
+                    delete(Workspace).where(
+                        Workspace.id == settings.default_workspace_id
+                    )
+                )
+        finally:
+            await engine.dispose()

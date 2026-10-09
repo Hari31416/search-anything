@@ -195,13 +195,28 @@ uv run pytest -q
 make frontend-check
 ```
 
-The live acceptance test requires the local Compose services and downloaded
-local models:
+Workspace API tests use mocked database sessions and storage. Ordinary tests
+never connect to PostgreSQL or RustFS.
+
+The optional infrastructure acceptance test requires explicitly configured,
+separate test services with an already migrated database and cached models:
 
 ```sh
+SEARCH_TEST_DATABASE_URL=postgresql+asyncpg://test:test@localhost:55433/search_test \
+SEARCH_TEST_STORAGE_ENDPOINT=http://localhost:9100 \
+SEARCH_TEST_STORAGE_BUCKET=search-anything-test-acceptance \
+SEARCH_TEST_STORAGE_ACCESS_KEY=search-test \
+SEARCH_TEST_STORAGE_SECRET_KEY=testing-only \
 SEARCH_INTEGRATION_TESTS=1 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
   uv run pytest -q tests/test_infrastructure_live.py -s
 ```
+
+These example services are not the application's Compose services. The test
+refuses missing test targets, the app database name, database names without
+`_test`, the app storage endpoint, and buckets without the
+`search-anything-test-` prefix. It removes its own workspace and stored objects
+on completion or failure. Enabling `SEARCH_INTEGRATION_TESTS` alone cannot use
+the app's services.
 
 The application provides an upload library, segmentation and sampling profile
 management, and multimodal hybrid search with grouped passage and timestamp

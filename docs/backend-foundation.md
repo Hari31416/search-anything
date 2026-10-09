@@ -60,5 +60,8 @@ and channel evidence. Query embeddings run through the worker's private Unix
 socket so the API does not load a second local model.
 
 `SEARCH_INTEGRATION_TESTS=1 uv run pytest -q tests/test_infrastructure_live.py`
-runs the live PostgreSQL/RustFS acceptance test. The ordinary test suite skips
-that test unless explicitly enabled.
+runs the optional PostgreSQL/RustFS acceptance test only with explicit isolated
+`SEARCH_TEST_DATABASE_URL`, `SEARCH_TEST_STORAGE_ENDPOINT`, and
+`SEARCH_TEST_STORAGE_BUCKET` targets. See README.md for required credentials
+and guards. It cannot fall back to the app services. Workspace API tests use
+mocked sessions and storage; the ordinary suite makes no service connections.

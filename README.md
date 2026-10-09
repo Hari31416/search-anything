@@ -119,6 +119,52 @@ representation counts and estimated float32 vector payload bytes. The byte
 estimate excludes database row and index overhead; latency includes local
 inference and PostgreSQL retrieval.
 
+## Frontend
+
+The frontend is a React, TypeScript, and Vite application located in `frontend/`. It uses shadcn/ui and Radix primitives with Tailwind CSS.
+
+### Development and proxy
+
+The FastAPI backend runs without CORS headers. The frontend uses Vite's development proxy to route all relative requests to `/api` and `/health` to `http://127.0.0.1:8000`.
+
+Start the frontend development server:
+
+```sh
+cd frontend
+pnpm install
+pnpm dev
+```
+
+The frontend listens on `http://127.0.0.1:5173`.
+
+### Frontend verification
+
+Run TypeScript type checks, linting, tests, and production build with:
+
+```sh
+cd frontend
+pnpm typecheck
+pnpm lint
+pnpm test
+pnpm build
+```
+
+## Management via Makefile
+
+A root `Makefile` provides full-stack lifecycle and development commands:
+
+```sh
+make start          # Start infrastructure, run migrations, and launch backend, worker, frontend
+make stop           # Stop all background services and Docker infrastructure
+make status         # Show status of Docker containers and local processes
+make health         # Check RustFS and API readiness endpoints
+make check          # Run backend Black/Ruff/Pytest and frontend typecheck/lint/test/build
+make format         # Format backend with Black and frontend with Prettier
+make logs-backend   # Follow logs/backend.log
+make logs-worker    # Follow logs/worker.log
+make logs-frontend  # Follow logs/frontend.log
+```
+
 ## Validation
 
 Run formatting, lint, and unit checks with:
@@ -127,6 +173,7 @@ Run formatting, lint, and unit checks with:
 uv run black --check src tests
 uv run ruff check src tests
 uv run pytest -q
+make frontend-check
 ```
 
 The live acceptance test requires the local Compose services and downloaded
@@ -137,6 +184,6 @@ SEARCH_INTEGRATION_TESTS=1 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
   uv run pytest -q tests/test_infrastructure_live.py -s
 ```
 
-The backend indexes and processes uploaded content and supports text, image,
-and bounded audio/video queries. Combined indexing is opt-in and retrieval
-defaults to separate representations. There is no frontend yet.
+The application provides an upload library, segmentation and sampling profile
+management, and multimodal hybrid search with grouped passage and timestamp
+playback.

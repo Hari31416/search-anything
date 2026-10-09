@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import logging
 import re
@@ -200,6 +199,11 @@ def create_app(
                                 config={
                                     "strategy": "automatic",
                                     "version": 1,
+                                    "media_preset": "automatic",
+                                    "media_window_seconds": None,
+                                    "media_overlap_seconds": None,
+                                    "video_sampling_fps": None,
+                                    "transcription_language": None,
                                     "text_chunk_tokens": request.app.state.settings.chunk_target_tokens,
                                     "text_overlap_tokens": request.app.state.settings.chunk_overlap_tokens,
                                     "ocr_languages": request.app.state.settings.ocr_languages,

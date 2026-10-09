@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import os
+import subprocess
+from pathlib import Path
 from io import BytesIO
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
@@ -30,6 +32,7 @@ from search_anything.models import (
     IngestionProfile,
     ProcessingGeneration,
     Representation,
+    Segment,
 )
 from search_anything.settings import Settings
 from search_anything.storage import S3ObjectStorage
@@ -44,7 +47,9 @@ pytestmark = [
 ]
 
 
-async def test_live_upload_ranges_presigned_jobs_generation_and_cleanup() -> None:
+async def test_live_upload_ranges_presigned_jobs_generation_and_cleanup(
+    tmp_path: Path,
+) -> None:
     settings = Settings(
         default_workspace_id=uuid4(), default_workspace_name="Integration"
     )
@@ -166,6 +171,8 @@ async def test_live_upload_ranges_presigned_jobs_generation_and_cleanup() -> Non
                 ImageDraw.Draw(image).text((20, 40), "FIRE TRUCK", fill="black")
                 image_bytes = BytesIO()
                 image.save(image_bytes, format="PNG")
+                image_path = tmp_path / "fire-truck.png"
+                image.save(image_path)
                 image_response = await client.post(
                     "/api/assets",
                     files={
@@ -177,9 +184,169 @@ async def test_live_upload_ranges_presigned_jobs_generation_and_cleanup() -> Non
                 image_asset_id = UUID(image_result["asset"]["id"])
                 image_generation_id = UUID(image_result["generation_id"])
 
+                speech_path = tmp_path / "spoken-fixture.aiff"
+                subprocess.run(
+                    [
+                        "/usr/bin/say",
+                        "-o",
+                        str(speech_path),
+                        "The red truck is parked near the station.",
+                    ],
+                    check=True,
+                    timeout=30,
+                )
+                late_speech_path = tmp_path / "late-spoken-fixture.aiff"
+                subprocess.run(
+                    [
+                        "/usr/bin/say",
+                        "-o",
+                        str(late_speech_path),
+                        "A blue bicycle arrives at midnight.",
+                    ],
+                    check=True,
+                    timeout=30,
+                )
+                first_wav = tmp_path / "first.wav"
+                late_wav = tmp_path / "late.wav"
+                silence_wav = tmp_path / "silence.wav"
+                for input_path, output_path in (
+                    (speech_path, first_wav),
+                    (late_speech_path, late_wav),
+                ):
+                    subprocess.run(
+                        [
+                            "ffmpeg",
+                            "-hide_banner",
+                            "-loglevel",
+                            "error",
+                            "-i",
+                            str(input_path),
+                            "-ac",
+                            "1",
+                            "-ar",
+                            "16000",
+                            "-c:a",
+                            "pcm_s16le",
+                            "-y",
+                            str(output_path),
+                        ],
+                        check=True,
+                        timeout=30,
+                    )
+                subprocess.run(
+                    [
+                        "ffmpeg",
+                        "-hide_banner",
+                        "-loglevel",
+                        "error",
+                        "-f",
+                        "lavfi",
+                        "-i",
+                        "anullsrc=r=16000:cl=mono",
+                        "-t",
+                        "31",
+                        "-c:a",
+                        "pcm_s16le",
+                        "-y",
+                        str(silence_wav),
+                    ],
+                    check=True,
+                    timeout=30,
+                )
+                concat_list = tmp_path / "audio-files.txt"
+                concat_list.write_text(
+                    "".join(
+                        f"file '{path}'\n"
+                        for path in (first_wav, silence_wav, late_wav)
+                    )
+                )
+                long_audio_path = tmp_path / "spoken-after-30-seconds.wav"
+                subprocess.run(
+                    [
+                        "ffmpeg",
+                        "-hide_banner",
+                        "-loglevel",
+                        "error",
+                        "-f",
+                        "concat",
+                        "-safe",
+                        "0",
+                        "-i",
+                        str(concat_list),
+                        "-c",
+                        "copy",
+                        "-y",
+                        str(long_audio_path),
+                    ],
+                    check=True,
+                    timeout=30,
+                )
+                audio_response = await client.post(
+                    "/api/assets",
+                    files={
+                        "file": (
+                            "spoken-fixture.wav",
+                            long_audio_path.read_bytes(),
+                            "audio/wav",
+                        )
+                    },
+                )
+                assert audio_response.status_code == 201, audio_response.text
+                audio_result = audio_response.json()
+                audio_asset_id = UUID(audio_result["asset"]["id"])
+                audio_generation_id = UUID(audio_result["generation_id"])
+
+                video_path = tmp_path / "silent-video.mp4"
+                subprocess.run(
+                    [
+                        "ffmpeg",
+                        "-hide_banner",
+                        "-loglevel",
+                        "error",
+                        "-loop",
+                        "1",
+                        "-framerate",
+                        "4",
+                        "-i",
+                        str(image_path),
+                        "-t",
+                        "3",
+                        "-vf",
+                        "fps=4",
+                        "-c:v",
+                        "libx264",
+                        "-pix_fmt",
+                        "yuv420p",
+                        "-y",
+                        str(video_path),
+                    ],
+                    check=True,
+                    timeout=30,
+                )
+                video_response = await client.post(
+                    "/api/assets",
+                    files={
+                        "file": (
+                            "silent-video.mp4",
+                            video_path.read_bytes(),
+                            "video/mp4",
+                        )
+                    },
+                )
+                assert video_response.status_code == 201, video_response.text
+                video_result = video_response.json()
+                video_asset_id = UUID(video_result["asset"]["id"])
+                video_generation_id = UUID(video_result["generation_id"])
+
                 worker = Worker(settings, sessions, storage)
-                asset_ids = (asset_id, concurrent_asset_id, image_asset_id)
-                for _ in range(10):
+                asset_ids = (
+                    asset_id,
+                    concurrent_asset_id,
+                    image_asset_id,
+                    audio_asset_id,
+                    video_asset_id,
+                )
+                for _ in range(30):
                     async with sessions() as session:
                         generations = (
                             await session.scalars(
@@ -188,7 +355,7 @@ async def test_live_upload_ranges_presigned_jobs_generation_and_cleanup() -> Non
                                 )
                             )
                         ).all()
-                        all_active = len(generations) == 3 and all(
+                        all_active = len(generations) == 5 and all(
                             generation.state == "active" for generation in generations
                         )
                     if all_active:
@@ -227,9 +394,81 @@ async def test_live_upload_ranges_presigned_jobs_generation_and_cleanup() -> Non
                         )
                     )
                     assert ocr_text and "FIRE" in ocr_text.upper()
+                    audio_asset = await session.get(Asset, audio_asset_id)
+                    video_asset = await session.get(Asset, video_asset_id)
+                    assert audio_asset and audio_asset.duration_seconds is not None
+                    assert video_asset and video_asset.duration_seconds is not None
+                    transcripts = (
+                        await session.scalars(
+                            select(Representation.text_content).where(
+                                Representation.generation_id == audio_generation_id,
+                                Representation.kind == "transcript",
+                            )
+                        )
+                    ).all()
+                    joined_transcript = " ".join(transcripts).casefold()
+                    assert "truck" in joined_transcript
+                    assert "bicycle" in joined_transcript
+                    transcript_segments = (
+                        await session.scalars(
+                            select(Segment)
+                            .join(
+                                Representation, Representation.segment_id == Segment.id
+                            )
+                            .where(
+                                Representation.generation_id == audio_generation_id,
+                                Representation.kind == "transcript",
+                            )
+                        )
+                    ).all()
+                    assert transcript_segments
+                    assert all(
+                        segment.time_start is not None
+                        and segment.time_end > segment.time_start
+                        for segment in transcript_segments
+                    )
+                    assert any(
+                        segment.time_start > 30 for segment in transcript_segments
+                    ), [
+                        (segment.time_start, segment.body)
+                        for segment in transcript_segments
+                    ]
+                    audio_representations = (
+                        await session.scalars(
+                            select(Representation).where(
+                                Representation.generation_id == audio_generation_id,
+                                Representation.kind == "audio",
+                            )
+                        )
+                    ).all()
+                    assert len(audio_representations) >= 2
+                    video_representation = await session.scalar(
+                        select(Representation).where(
+                            Representation.generation_id == video_generation_id,
+                            Representation.kind == "video",
+                        )
+                    )
+                    assert video_representation is not None
+                    timestamps = video_representation.metadata_json["frame_timestamps"]
+                    assert len(timestamps) >= 2
+                    assert timestamps[0] >= 0 and timestamps[-1] <= 3.05
+                    assert any(
+                        segment.content_type == "ocr" and segment.time_start is not None
+                        for segment in await session.scalars(
+                            select(Segment).where(
+                                Segment.generation_id == video_generation_id
+                            )
+                        )
+                    )
+                    video_versions = (
+                        await session.get(ProcessingGeneration, video_generation_id)
+                    ).extractor_versions
+                    assert video_versions["audio_stream"] == "skipped:no_audio_stream"
                 assert worker._embedding_model is not None
                 with pytest.raises(ContextLimitError):
                     worker._embedding_model.embed_texts(["word " * 9000])
+                with pytest.raises(ContextLimitError, match="audio windows"):
+                    worker._embedding_model.embed_audio(long_audio_path)
                 long_source = "A clear sentence ends here. " * 1800
                 long_chunks = await worker.scheduler.submit(
                     chunk_blocks,

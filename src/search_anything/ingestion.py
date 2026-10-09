@@ -11,7 +11,7 @@ import ast
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from pathlib import PurePosixPath
-from typing import Any, Callable
+from typing import Any, Literal
 
 from PIL import Image, ImageOps
 from docx import Document
@@ -19,6 +19,7 @@ from pypdf import PdfReader
 from pydantic import BaseModel, Field, model_validator
 
 from search_anything.embeddings import ContextLimitError, LocalEmbeddingModel
+from search_anything.media import media_settings
 
 MAX_DOCUMENT_BYTES = 64 * 1024 * 1024
 MAX_DOCUMENT_PAGES = 2000
@@ -39,11 +40,29 @@ _SKIP_HTML = {"script", "style", "noscript", "nav", "footer"}
 
 
 class IngestionOptions(BaseModel):
-    strategy: str = "automatic"
+    strategy: Literal["automatic"] = "automatic"
     version: int = 1
+    media_preset: Literal[
+        "automatic",
+        "speech_lectures",
+        "general_video",
+        "music_sounds",
+        "camera_footage",
+    ] = "automatic"
+    media_window_seconds: float | None = Field(default=None, ge=1, le=300)
+    media_overlap_seconds: float | None = Field(default=None, ge=0, le=29)
+    video_sampling_fps: float | None = Field(default=None, ge=0.05, le=30)
+    transcription_language: str | None = None
     text_chunk_tokens: int = Field(default=700, ge=64, le=4096)
     text_overlap_tokens: int = Field(default=80, ge=0, le=512)
     ocr_languages: str = Field(default="eng", min_length=1, max_length=100)
+
+    def resolved_media_preset(self, content_type: str) -> str:
+        if self.media_preset != "automatic":
+            return self.media_preset
+        return (
+            "general_video" if content_type.startswith("video/") else "speech_lectures"
+        )
 
     @model_validator(mode="after")
     def check_overlap(self) -> "IngestionOptions":
@@ -51,6 +70,24 @@ class IngestionOptions(BaseModel):
             raise ValueError("text overlap must be smaller than the chunk target")
         if not re.fullmatch(r"[A-Za-z0-9_+.-]+", self.ocr_languages):
             raise ValueError("OCR language list contains unsupported characters")
+        if (
+            self.media_window_seconds is not None
+            and self.media_overlap_seconds is not None
+            and self.media_overlap_seconds >= self.media_window_seconds
+        ):
+            raise ValueError("media overlap must be smaller than the window")
+        presets = (
+            [self.media_preset]
+            if self.media_preset != "automatic"
+            else ["speech_lectures", "general_video"]
+        )
+        for preset in presets:
+            media_settings(
+                preset,
+                self.media_window_seconds,
+                self.media_overlap_seconds,
+                self.video_sampling_fps,
+            )
         return self
 
 
@@ -68,6 +105,8 @@ class TextBlock:
     source_start: int | None = None
     source_end: int | None = None
     kind: str = "text"
+    time_start: float | None = None
+    time_end: float | None = None
 
 
 @dataclass(frozen=True)
@@ -80,6 +119,8 @@ class TextChunk:
     source_end: int | None
     token_count: int
     kind: str
+    time_start: float | None = None
+    time_end: float | None = None
 
 
 @dataclass(frozen=True)
@@ -715,6 +756,8 @@ def _table_chunks(
                 source_end,
                 _formatted_count(model, title, block.heading, value),
                 block.kind,
+                block.time_start,
+                block.time_end,
             )
         )
     return result
@@ -747,6 +790,8 @@ def chunk_blocks(
                     block.source_end,
                     count,
                     block.kind,
+                    block.time_start,
+                    block.time_end,
                 )
             )
             continue
@@ -826,6 +871,24 @@ def chunk_blocks(
                         source_end if source_end is not None else block.source_end,
                         _formatted_count(model, title, block.heading, value),
                         block.kind,
+                        (
+                            block.time_start
+                            + char_start
+                            / max(1, len(block.text))
+                            * (block.time_end - block.time_start)
+                            if block.time_start is not None
+                            and block.time_end is not None
+                            else block.time_start
+                        ),
+                        (
+                            block.time_start
+                            + char_end
+                            / max(1, len(block.text))
+                            * (block.time_end - block.time_start)
+                            if block.time_start is not None
+                            and block.time_end is not None
+                            else block.time_end
+                        ),
                     )
                 )
             if boundary_end >= len(offsets):

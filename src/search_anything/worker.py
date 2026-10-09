@@ -11,6 +11,7 @@ import socket
 import subprocess
 import tempfile
 from contextlib import suppress
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Awaitable, Callable
@@ -55,6 +56,17 @@ from search_anything.ingestion import (
     chunk_blocks,
     extract_document,
 )
+from search_anything.media import (
+    MAX_AUDIO_WINDOW_SECONDS,
+    extract_audio_window,
+    extract_video_frames,
+    load_whisper,
+    media_settings,
+    probe_media,
+    split_audio_window,
+    transcribe_window,
+    window_ranges,
+)
 from search_anything.scheduler import LocalInferenceScheduler
 from search_anything.settings import Settings, get_settings
 from search_anything.storage import S3ObjectStorage
@@ -76,6 +88,7 @@ class Worker:
         self.storage = storage
         self.scheduler = scheduler or LocalInferenceScheduler()
         self._embedding_model: LocalEmbeddingModel | None = None
+        self._whisper_model: Any | None = None
         self.worker_id = f"{socket.gethostname()}-{os.getpid()}"
         self.handlers: dict[str, JobHandler] = {
             "probe": self.probe_asset,
@@ -302,6 +315,283 @@ class Worker:
     def _embed_image(self, image: Any) -> list[float]:
         return self._model().embed_images([image])[0]
 
+    def _embed_audio(self, path: Path) -> list[float]:
+        return self._model().embed_audio(path)
+
+    def _embed_video(self, frames: list[Any]) -> list[float]:
+        return self._model().embed_video(frames)
+
+    def _transcribe(self, path: Path, language: str | None) -> dict[str, Any]:
+        if self._whisper_model is None:
+            self._whisper_model = load_whisper(self.settings.whisper_checkpoint_path)
+        return transcribe_window(self._whisper_model, path, language)
+
+    async def _copy_object_to_path(self, key: str, destination: Path) -> None:
+        stored = await self.storage.get_object(key)
+
+        def copy() -> None:
+            try:
+                with destination.open("wb") as target:
+                    shutil.copyfileobj(stored.body, target, length=1024 * 1024)
+            finally:
+                stored.body.close()
+
+        await asyncio.to_thread(copy)
+
+    async def _index_av_file(
+        self,
+        source: Path,
+        content_type: str,
+        options: IngestionOptions,
+    ) -> tuple[list[TextBlock], list[dict[str, Any]], dict[str, Any]]:
+        probe = await asyncio.to_thread(probe_media, source)
+        is_video_asset = content_type.startswith("video/")
+        if not probe.has_audio and not probe.has_video:
+            raise ValueError("media file has no audio or video stream")
+        preset = options.resolved_media_preset(content_type)
+        sample = media_settings(
+            preset,
+            options.media_window_seconds,
+            options.media_overlap_seconds,
+            options.video_sampling_fps,
+        )
+        windows = window_ranges(
+            probe.duration_seconds,
+            preset,
+            sample["window_seconds"],
+            sample["overlap_seconds"],
+        )
+        text_blocks: list[TextBlock] = []
+        media_records: list[dict[str, Any]] = []
+        transcript_count = 0
+        audio_window_count = 0
+        frame_count = 0
+        ocr_seen: dict[str, int] = {}
+        transcription_language: str | None = None
+
+        with tempfile.TemporaryDirectory(prefix="search-anything-av-") as temporary:
+            temp = Path(temporary)
+            for ordinal, window in enumerate(windows):
+                if probe.has_audio:
+                    audio_windows = split_audio_window(
+                        window, sample["overlap_seconds"]
+                    )
+                    for audio_ordinal, audio_window in enumerate(audio_windows):
+                        audio_path = (
+                            temp / f"audio-{ordinal:06d}-{audio_ordinal:04d}.wav"
+                        )
+                        await asyncio.to_thread(
+                            extract_audio_window, source, audio_path, audio_window
+                        )
+                        transcription = await self.scheduler.submit(
+                            self._transcribe,
+                            audio_path,
+                            options.transcription_language,
+                            kind="ingestion",
+                        )
+                        transcription_language = transcription.get("language")
+                        for index, segment in enumerate(
+                            transcription.get("segments", [])
+                        ):
+                            text = str(segment.get("text", "")).strip()
+                            if not text:
+                                continue
+                            words = segment.get("words") or []
+                            if words:
+                                relative_start = min(
+                                    float(word["start"]) for word in words
+                                )
+                                relative_end = max(float(word["end"]) for word in words)
+                            else:
+                                relative_start = max(
+                                    0.0, float(segment.get("start", 0))
+                                )
+                                relative_end = max(
+                                    relative_start,
+                                    float(segment.get("end", relative_start)),
+                                )
+                            start = min(
+                                audio_window.end,
+                                audio_window.start + relative_start,
+                            )
+                            end = min(
+                                audio_window.end,
+                                max(start, audio_window.start + relative_end),
+                            )
+                            text_blocks.append(
+                                TextBlock(
+                                    text,
+                                    None,
+                                    {
+                                        "language": transcription_language,
+                                        "window_start": audio_window.start,
+                                        "whisper_segment": index,
+                                    },
+                                    kind="transcript",
+                                    time_start=start,
+                                    time_end=end,
+                                )
+                            )
+                            transcript_count += 1
+                        audio_vector = await self.scheduler.submit(
+                            self._embed_audio, audio_path, kind="ingestion"
+                        )
+                        media_records.append(
+                            {
+                                "kind": "audio",
+                                "start": audio_window.start,
+                                "end": audio_window.end,
+                                "vector": audio_vector,
+                                "metadata": {
+                                    "preset": preset,
+                                    "sample_rate": 16000,
+                                    "channels": 1,
+                                    "profile_window_start": window.start,
+                                    "profile_window_end": window.end,
+                                    "effective_window_seconds": min(
+                                        MAX_AUDIO_WINDOW_SECONDS,
+                                        sample["window_seconds"],
+                                    ),
+                                    "transcript_segments": len(
+                                        transcription.get("segments", [])
+                                    ),
+                                },
+                            }
+                        )
+                        audio_window_count += 1
+                        audio_path.unlink(missing_ok=True)
+
+                if is_video_asset and probe.has_video:
+                    frame_dir = temp / f"frames-{ordinal:06d}"
+                    decoded = await asyncio.to_thread(
+                        extract_video_frames,
+                        source,
+                        frame_dir,
+                        window,
+                        sample["video_fps"],
+                    )
+                    from PIL import Image
+
+                    images = [Image.open(path).convert("RGB") for path in decoded.paths]
+                    try:
+                        for image, path, timestamp in zip(
+                            images, decoded.paths, decoded.timestamps
+                        ):
+                            encoded = await asyncio.to_thread(
+                                self._encode_frame_png, image
+                            )
+                            ocr = await asyncio.to_thread(
+                                self._ocr_bytes, encoded, options.ocr_languages
+                            )
+                            text = ocr["text"].strip()
+                            if text:
+                                end = min(
+                                    window.end,
+                                    timestamp + 1.0 / decoded.effective_fps,
+                                )
+                                prior_index = ocr_seen.get(text)
+                                if prior_index is not None:
+                                    prior = text_blocks[prior_index]
+                                    if (
+                                        prior.time_end is not None
+                                        and timestamp <= prior.time_end + 1.5
+                                    ):
+                                        text_blocks[prior_index] = replace(
+                                            prior,
+                                            location={
+                                                **prior.location,
+                                                "last_timestamp": timestamp,
+                                                "ocr_words_last": ocr["words"],
+                                            },
+                                            time_end=max(prior.time_end, end),
+                                        )
+                                    else:
+                                        prior_index = None
+                                if prior_index is None:
+                                    ocr_seen[text] = len(text_blocks)
+                                    text_blocks.append(
+                                        TextBlock(
+                                            text,
+                                            None,
+                                            {
+                                                "timestamp": timestamp,
+                                                "ocr_words": ocr["words"],
+                                                "frame": path.name,
+                                            },
+                                            kind="ocr",
+                                            time_start=timestamp,
+                                            time_end=end,
+                                        )
+                                    )
+                        if images:
+                            video_vector = await self.scheduler.submit(
+                                self._embed_video, images, kind="ingestion"
+                            )
+                            media_records.append(
+                                {
+                                    "kind": "video",
+                                    "start": window.start,
+                                    "end": window.end,
+                                    "vector": video_vector,
+                                    "metadata": {
+                                        "preset": preset,
+                                        "requested_fps": sample["video_fps"],
+                                        "effective_fps": decoded.effective_fps,
+                                        "frame_timestamps": decoded.timestamps,
+                                    },
+                                }
+                            )
+                            frame_count += len(images)
+                    finally:
+                        for image in images:
+                            image.close()
+                        for path in decoded.paths:
+                            path.unlink(missing_ok=True)
+                        frame_dir.rmdir()
+
+        versions = {
+            "ffprobe": probe.ffprobe_version,
+            "ffmpeg": await asyncio.to_thread(self._tool_version, "ffmpeg", "-version"),
+            "media_preset": preset,
+            "window_seconds": sample["window_seconds"],
+            "overlap_seconds": sample["overlap_seconds"],
+            "requested_video_fps": sample["video_fps"],
+            "audio_windows": len(windows) if probe.has_audio else 0,
+            "audio_subwindows": audio_window_count,
+            "effective_audio_window_seconds": min(
+                MAX_AUDIO_WINDOW_SECONDS, sample["window_seconds"]
+            ),
+            "video_frames": frame_count,
+            "transcript_segments": transcript_count,
+            "whisper_model": (
+                self.settings.whisper_model_name if probe.has_audio else None
+            ),
+            "whisper_sha256": (
+                "65147644a518d12f04e32d6f3b26facc3f8dd46e5390956a9424a650c0ce22b9"
+                if probe.has_audio
+                else None
+            ),
+            "transcription_language": transcription_language,
+            "audio_stream": "present" if probe.has_audio else "skipped:no_audio_stream",
+            "video_stream": "present" if probe.has_video else "absent",
+        }
+        return text_blocks, media_records, versions
+
+    @staticmethod
+    def _encode_frame_png(image: Any) -> bytes:
+        from io import BytesIO
+
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+        return buffer.getvalue()
+
+    @staticmethod
+    def _ocr_bytes(content: bytes, languages: str) -> dict[str, Any]:
+        from search_anything.ingestion import ocr_image
+
+        result = ocr_image(content, languages)
+        return {"text": result.text, "words": result.words}
+
     async def index_generation(self, job: LeasedJob) -> None:
         if job.asset_id is None or job.generation_id is None:
             raise ValueError("index job is missing an asset or generation")
@@ -318,22 +608,39 @@ class Worker:
                 generation.profile_snapshot
             )
 
-        if byte_size > MAX_DOCUMENT_BYTES:
-            raise ValueError(
-                f"document exceeds the {MAX_DOCUMENT_BYTES}-byte extraction limit"
+        is_av = content_type.startswith(("audio/", "video/"))
+        media_records: list[dict[str, Any]] = []
+        duration_seconds: float | None = None
+        extractor_versions: dict[str, Any] = {}
+        if is_av:
+            with tempfile.TemporaryDirectory(prefix="search-anything-index-") as temp:
+                source = Path(temp) / "original"
+                await self._copy_object_to_path(key, source)
+                blocks, media_records, extractor_versions = await self._index_av_file(
+                    source, content_type, generation_options
+                )
+                duration_seconds = (
+                    await asyncio.to_thread(probe_media, source)
+                ).duration_seconds
+            image = None
+            extracted_pages = None
+        else:
+            if byte_size > MAX_DOCUMENT_BYTES:
+                raise ValueError(
+                    f"document exceeds the {MAX_DOCUMENT_BYTES}-byte extraction limit"
+                )
+            stored = await self.storage.get_object(key)
+            try:
+                content = await asyncio.to_thread(stored.body.read)
+            finally:
+                await asyncio.to_thread(stored.body.close)
+            blocks, image, extracted_pages = await asyncio.to_thread(
+                extract_document,
+                filename,
+                content_type,
+                content,
+                generation_options.ocr_languages,
             )
-        stored = await self.storage.get_object(key)
-        try:
-            content = await asyncio.to_thread(stored.body.read)
-        finally:
-            await asyncio.to_thread(stored.body.close)
-        blocks, image, extracted_pages = await asyncio.to_thread(
-            extract_document,
-            filename,
-            content_type,
-            content,
-            generation_options.ocr_languages,
-        )
         chunks = await self.scheduler.submit(
             self._plan_chunks,
             blocks,
@@ -362,12 +669,14 @@ class Worker:
             if image is not None
             else None
         )
-        extractor_versions = {
-            "text_extractor": "local-structure-v1",
-            "embedding_model": MODEL_ID,
-            "embedding_revision": MODEL_REVISION,
-            "embedding_dimensions": DIMENSIONS,
-        }
+        extractor_versions.update(
+            {
+                "text_extractor": "local-structure-v1",
+                "embedding_model": MODEL_ID,
+                "embedding_revision": MODEL_REVISION,
+                "embedding_dimensions": DIMENSIONS,
+            }
+        )
         if image is not None or any(chunk.kind == "ocr" for chunk in chunks):
             extractor_versions["tesseract"] = await asyncio.to_thread(
                 self._tool_version, "tesseract", "--version"
@@ -429,14 +738,20 @@ class Worker:
                         },
                         source_start=chunk.source_start,
                         source_end=chunk.source_end,
+                        time_start=chunk.time_start,
+                        time_end=chunk.time_end,
                     )
                     representation = Representation(
                         id=uuid4(),
                         generation_id=job.generation_id,
                         segment_id=segment_id,
-                        kind="ocr" if chunk.kind == "ocr" else "text",
+                        kind=(
+                            chunk.kind
+                            if chunk.kind in {"ocr", "transcript"}
+                            else "text"
+                        ),
                         text_content=chunk.text,
-                        detected_language=None,
+                        detected_language=chunk.location.get("language"),
                         metadata_json={
                             "heading": chunk.heading,
                             "source_location": chunk.location,
@@ -480,10 +795,51 @@ class Worker:
                             ),
                         ]
                     )
-                current_generation.extractor_versions = extractor_versions
+                next_ordinal = len(chunks)
+                for media_record in media_records:
+                    segment_id = uuid4()
+                    segment = Segment(
+                        id=segment_id,
+                        generation_id=job.generation_id,
+                        ordinal=next_ordinal,
+                        content_type=media_record["kind"],
+                        body=None,
+                        source_location=media_record["metadata"],
+                        time_start=media_record["start"],
+                        time_end=media_record["end"],
+                    )
+                    representation = Representation(
+                        id=uuid4(),
+                        generation_id=job.generation_id,
+                        segment_id=segment_id,
+                        kind=media_record["kind"],
+                        text_content=None,
+                        metadata_json=media_record["metadata"],
+                    )
+                    session.add_all(
+                        [
+                            segment,
+                            representation,
+                            Embedding(
+                                id=uuid4(),
+                                representation_id=representation.id,
+                                model_id=MODEL_ID,
+                                model_revision=MODEL_REVISION,
+                                dimensions=DIMENSIONS,
+                                vector=media_record["vector"],
+                            ),
+                        ]
+                    )
+                    next_ordinal += 1
+                current_generation.extractor_versions = {
+                    **current_generation.extractor_versions,
+                    **extractor_versions,
+                }
                 current_generation.state = "complete"
                 if extracted_pages is not None:
                     current_asset.page_count = extracted_pages
+                if duration_seconds is not None:
+                    current_asset.duration_seconds = duration_seconds
                 await activate_generation(session, job.asset_id, job.generation_id, job)
                 current_job.status = "succeeded"
                 current_job.progress = 1.0

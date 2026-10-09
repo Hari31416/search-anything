@@ -228,9 +228,12 @@ Use small local fixtures to check functional correctness, independent of the lat
 - Phase 2 in progress. Text, Markdown, HTML, PDF, DOCX, Python source, and image
   uploads now run through local structural extraction, OCR where needed,
   tokenizer-bounded segmentation, normalized EmbeddingGemma vectors, lexical
-  indexing, and atomic generation activation. The worker reads immutable
-  per-generation chunk/OCR options. Audio/video extraction and transcription,
-  profile and lifecycle endpoints, and broader media presets remain next.
+  indexing, and atomic generation activation. Local FFmpeg, Whisper tiny, and
+  EmbeddingGemma now index audio/video windows, timed transcripts, sampled
+  video frames, and OCR spans. Media presets, validated per-generation window
+  and sampling overrides, missing-audio handling, source timestamps, and frame
+  limits are covered by live and deterministic checks. Profile management and
+  retry/cancel/reprocess endpoints remain to complete phase 2.
 
 ## Planning sources
 

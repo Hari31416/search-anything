@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import wave
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -11,6 +12,7 @@ import numpy as np
 MODEL_ID = "google/embeddinggemma-2"
 MODEL_REVISION = "914f7f89142e33e77833254d9c9b90c3cef7303b"
 DIMENSIONS = 768
+MAX_AUDIO_SECONDS = 30.0
 
 
 class EmbeddingError(RuntimeError):
@@ -19,6 +21,22 @@ class EmbeddingError(RuntimeError):
 
 class ContextLimitError(EmbeddingError):
     pass
+
+
+def audio_window_duration(audio_path: Path) -> float:
+    try:
+        with wave.open(str(audio_path), "rb") as audio:
+            duration = audio.getnframes() / audio.getframerate()
+    except (OSError, wave.Error, ZeroDivisionError) as error:
+        raise EmbeddingError(
+            "audio embeddings require a readable PCM WAV input"
+        ) from error
+    if duration > MAX_AUDIO_SECONDS:
+        raise ContextLimitError(
+            f"audio is {duration:.3f}s; model audio windows are limited to "
+            f"{MAX_AUDIO_SECONDS:.0f}s to avoid processor truncation"
+        )
+    return duration
 
 
 class LocalEmbeddingModel:
@@ -96,6 +114,19 @@ class LocalEmbeddingModel:
         for image in images:
             self._processed(image)
         return self._encode(images)
+
+    def embed_audio(self, audio_path: Path) -> list[float]:
+        audio_window_duration(audio_path)
+        value = {"text": "<|audio|>", "audio": str(audio_path)}
+        self._processed(value)
+        return self._encode([value])[0]
+
+    def embed_video(self, frames: Sequence[Any]) -> list[float]:
+        if not frames:
+            raise EmbeddingError("video embedding requires at least one frame")
+        value = {"text": "<|video|>", "video": [list(frames)]}
+        self._processed(value)
+        return self._encode([value])[0]
 
     def _encode(self, values: Sequence[Any]) -> list[list[float]]:
         vectors = self.model.encode(

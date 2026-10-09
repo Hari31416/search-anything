@@ -42,8 +42,10 @@ class Settings(BaseSettings):
     chunk_target_tokens: int = Field(default=700, ge=64, le=4096)
     chunk_overlap_tokens: int = Field(default=80, ge=0, le=512)
     ocr_languages: str = "eng"
+    whisper_checkpoint_path: Path = Path("~/.cache/whisper/tiny.pt").expanduser()
+    whisper_model_name: str = "tiny"
 
-    @field_validator("embedding_model_path", mode="before")
+    @field_validator("embedding_model_path", "whisper_checkpoint_path", mode="before")
     @classmethod
     def expand_embedding_path(cls, value: str | Path) -> Path:
         return Path(value).expanduser()

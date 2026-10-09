@@ -23,8 +23,41 @@ representation and image representation gets its own finite, normalized 768d
 vector. A GIN index over `to_tsvector('simple', text_content)` supplies lexical
 indexing for text and OCR; hybrid retrieval is part of phase 3.
 
-The current HTTP upload path still defaults to the single `automatic` profile.
-Profile management, retry/cancel/reprocess endpoints, presets, and complete
-audio/video extraction with Whisper are not yet available. These are phase 2
-work; unsupported audio/video formats fail explicitly instead of being marked
-searchable.
+Audio and video files are probed with local FFprobe. The worker splits media
+into overlapping windows and uses FFmpeg to decode mono 16 kHz audio and
+sampled video frames. Whisper tiny runs locally on each audio window. Transcript
+segments keep their start/end times and detected language. Audio windows and
+video windows get separate EmbeddingGemma representations. Video frames also
+pass through local Tesseract; repeated OCR text in adjacent frames is merged
+with its observed time span.
+
+The default media presets are `speech_lectures` (30-second windows, 5-second
+overlap, 0.5 sampled frames/second), `general_video` (20/5 seconds, 1 frame per
+second), `music_sounds` (15/3 seconds, 0.5 frames/second), and `camera_footage`
+(10/3 seconds, 1 frame/second). Automatic selection uses `speech_lectures` for
+audio and `general_video` for video. A generation can override window length,
+overlap, frame sampling rate, and transcription language. Validation resolves
+partial overrides against the selected preset and rejects overlap that would
+leave no forward progress. When a requested frame rate would exceed 32 decoded
+frames in one window, the worker lowers the effective rate and stores both
+requested and effective rates in generation metadata. A video shorter than one
+sampling interval still gets one frame. The installed audio processor limits
+its audio sequence to 750 feature frames, or about 30 seconds. `embed_audio`
+rejects longer WAV inputs, and the worker splits longer media into overlapping
+30-second audio windows. The live test puts a second spoken phrase after 30
+seconds and verifies that local Whisper indexes it with a source time beyond
+30 seconds.
+
+Frame images and temporary audio windows are deleted after indexing. The
+original asset remains in RustFS and timed segments point into it. Video window
+metadata stores the actual FFmpeg timestamps used for its visual embedding;
+OCR segments store their own time ranges and per-line geometry. Audio assets
+with attached cover art do not get a video representation. Silent audio still
+gets an audio embedding and simply has no transcript segments. Video with no
+audio stream gets video/OCR representations and records the skipped audio
+stream state.
+
+The HTTP upload path still defaults to the `automatic` profile. Profile
+management, retry/cancel/reprocess endpoints, and profile editing remain phase
+2 work. Uploads whose container has no decodable audio or video stream fail
+explicitly rather than becoming searchable.

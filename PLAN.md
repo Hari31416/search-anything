@@ -234,14 +234,21 @@ Use small local fixtures to check functional correctness, independent of the lat
   and sampling overrides, missing-audio handling, source timestamps, frame
   limits, immutable profiles, retry/cancel/reprocess, and generation state
   preservation are covered by live and deterministic checks.
-- Phase 3 underway. Hybrid text and semantic image queries use the worker's
-  single-owner inference scheduler over a private local IPC socket; the API
-  does not load another model. PostgreSQL full-text/filename search and exact
-  pgvector retrieval align source spans before weighted RRF and return one
-  result per asset with separate matching passages/moments and channel
-  evidence. Asset/type filters, request-time channel weights, and dense
-  cutoffs are implemented. Audio/video query uploads and the opt-in combined
-  representation experiment remain to complete this phase.
+- Phase 3 complete. Hybrid text, image, audio, and video queries use the
+  worker's single-owner inference scheduler over a private local IPC socket;
+  the API does not load another model. PostgreSQL full-text/filename search
+  and exact pgvector retrieval align source spans before weighted RRF and
+  return one result per asset with separate matching passages/moments and
+  channel evidence. Asset/type filters, request-time channel weights, dense
+  cutoffs, and explicit separate/combined/both retrieval modes are implemented.
+  Media query windows cover the full input up to 120 seconds for audio and 80
+  seconds for video, with covered ranges returned and longer inputs rejected.
+  Combined indexing is opt-in; processor context overflow skips only the
+  combined representation and is recorded while base indexing continues. The
+  comparison command reports retrieval latency, active vector counts and
+  estimated vector payload bytes, plus indexing times grouped by combined
+  profile. Live local acceptance covers image, audio, and video query paths and
+  combined image/audio indexing.
 
 ## Planning sources
 

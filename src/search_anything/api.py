@@ -29,7 +29,14 @@ from fastapi import (
 )
 from fastapi.responses import StreamingResponse
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -142,6 +149,9 @@ class CancelRequest(BaseModel):
 class SearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=8192)
     mode: str = Field(default="hybrid", pattern="^(hybrid|semantic|keyword)$")
+    representation_mode: str = Field(
+        default="separate", pattern="^(separate|combined|both)$"
+    )
     limit: int = Field(default=10, ge=1, le=50)
     candidate_limit: int = Field(default=60, ge=10, le=200)
     content_types: list[str] | None = Field(default=None, max_length=32)
@@ -182,7 +192,15 @@ class SearchRequest(BaseModel):
     ) -> dict[str, float] | None:
         if cutoffs is None:
             return None
-        dense_channels = {"text", "transcript", "ocr", "image", "audio", "video"}
+        dense_channels = {
+            "text",
+            "transcript",
+            "ocr",
+            "image",
+            "audio",
+            "video",
+            "combined",
+        }
         if set(cutoffs) - dense_channels:
             raise ValueError(
                 "similarity cutoffs must use dense representation channels"
@@ -204,6 +222,47 @@ class SearchRequest(BaseModel):
         if not any(resolved_weights.values()):
             raise ValueError("at least one search channel weight must be positive")
         return self
+
+
+def _search_form_options(
+    query: str,
+    mode: str,
+    limit: int,
+    candidate_limit: int,
+    content_types: str | None,
+    asset_ids: str | None,
+    weights: str | None,
+    similarity_cutoffs: str | None,
+    representation_mode: str,
+) -> SearchRequest:
+    def parse_json_field(name: str, value: str | None) -> Any:
+        if value is None or not value.strip():
+            return None
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError as error:
+            raise HTTPException(
+                status_code=422, detail=f"{name} must be valid JSON"
+            ) from error
+
+    try:
+        return SearchRequest.model_validate(
+            {
+                "query": query or "media query",
+                "mode": mode,
+                "limit": limit,
+                "candidate_limit": candidate_limit,
+                "content_types": parse_json_field("content_types", content_types),
+                "asset_ids": parse_json_field("asset_ids", asset_ids),
+                "weights": parse_json_field("weights", weights),
+                "similarity_cutoffs": parse_json_field(
+                    "similarity_cutoffs", similarity_cutoffs
+                ),
+                "representation_mode": representation_mode,
+            }
+        )
+    except ValidationError as error:
+        raise HTTPException(status_code=422, detail=error.errors()) from error
 
 
 def _default_profile_config(settings: Settings) -> dict[str, Any]:
@@ -558,7 +617,7 @@ def create_app(
             latest.setdefault(profile.name, profile)
         return [ProfileResponse.model_validate(profile) for profile in latest.values()]
 
-    async def local_embedding(payload: dict[str, Any]) -> list[float]:
+    async def local_query(payload: dict[str, Any]) -> dict[str, Any]:
         socket_path = settings.model_socket_path
         try:
             reader, writer = await asyncio.wait_for(
@@ -594,7 +653,14 @@ def create_app(
                 else 503
             )
             raise HTTPException(status_code=status_code, detail=response["message"])
-        return response["vector"]
+        return response
+
+    async def local_embedding(payload: dict[str, Any]) -> list[float]:
+        response = await local_query(payload)
+        vector = response.get("vector")
+        if vector is None:
+            raise HTTPException(status_code=422, detail="query produced no embedding")
+        return vector
 
     @app.post("/api/search")
     async def search(
@@ -617,16 +683,31 @@ def create_app(
             asset_ids=body.asset_ids,
             weights=body.weights,
             similarity_cutoffs=body.similarity_cutoffs,
+            representation_mode=body.representation_mode,
         )
-        return {"query": body.query, "mode": body.mode, "results": results}
+        return {
+            "query": body.query,
+            "mode": body.mode,
+            "representation_mode": body.representation_mode,
+            "results": results,
+        }
 
     @app.post("/api/search/image")
     async def search_image(
         request: Request,
         session: Session,
         file: Annotated[UploadFile, File()],
+        query: Annotated[str, Form()] = "",
+        mode: Annotated[str | None, Form(pattern="^(hybrid|semantic|keyword)$")] = None,
         limit: Annotated[int, Form(ge=1, le=50)] = 10,
         candidate_limit: Annotated[int, Form(ge=10, le=200)] = 60,
+        content_types: Annotated[str | None, Form()] = None,
+        asset_ids: Annotated[str | None, Form()] = None,
+        weights: Annotated[str | None, Form()] = None,
+        similarity_cutoffs: Annotated[str | None, Form()] = None,
+        representation_mode: Annotated[
+            str, Form(pattern="^(separate|combined|both)$")
+        ] = "separate",
     ) -> dict[str, Any]:
         if candidate_limit < limit:
             raise HTTPException(
@@ -636,22 +717,135 @@ def create_app(
         await file.close()
         if len(content) > 8 * 1024 * 1024:
             raise HTTPException(status_code=413, detail="query image exceeds 8 MiB")
-        vector = await local_embedding(
-            {
-                "kind": "image",
-                "content_base64": base64.b64encode(content).decode("ascii"),
-            }
+        clean_query = query.strip()
+        resolved_mode = mode or ("hybrid" if clean_query else "semantic")
+        options = _search_form_options(
+            clean_query,
+            resolved_mode,
+            limit,
+            candidate_limit,
+            content_types,
+            asset_ids,
+            weights,
+            similarity_cutoffs,
+            representation_mode,
+        )
+        payload: dict[str, Any] = {
+            "kind": "image_text" if clean_query else "image",
+            "content_base64": base64.b64encode(content).decode("ascii"),
+        }
+        if clean_query:
+            payload["text"] = clean_query
+        vector = (
+            await local_embedding(payload)
+            if resolved_mode in {"hybrid", "semantic"}
+            else None
         )
         results = await search_workspace(
             session,
             request.app.state.settings.default_workspace_id,
-            query="",
+            query=clean_query,
             vector=vector,
-            mode="semantic",
-            limit=limit,
-            candidate_limit=candidate_limit,
+            mode=resolved_mode,
+            limit=options.limit,
+            candidate_limit=options.candidate_limit,
+            content_types=options.content_types,
+            asset_ids=options.asset_ids,
+            weights=options.weights,
+            similarity_cutoffs=options.similarity_cutoffs,
+            representation_mode=options.representation_mode,
         )
-        return {"mode": "semantic", "results": results}
+        return {
+            "mode": resolved_mode,
+            "representation_mode": options.representation_mode,
+            "results": results,
+        }
+
+    @app.post("/api/search/media")
+    async def search_media(
+        request: Request,
+        session: Session,
+        file: Annotated[UploadFile, File()],
+        query: Annotated[str, Form()] = "",
+        mode: Annotated[str | None, Form(pattern="^(hybrid|semantic|keyword)$")] = None,
+        limit: Annotated[int, Form(ge=1, le=50)] = 10,
+        candidate_limit: Annotated[int, Form(ge=10, le=200)] = 60,
+        content_types: Annotated[str | None, Form()] = None,
+        asset_ids: Annotated[str | None, Form()] = None,
+        weights: Annotated[str | None, Form()] = None,
+        similarity_cutoffs: Annotated[str | None, Form()] = None,
+        representation_mode: Annotated[
+            str, Form(pattern="^(separate|combined|both)$")
+        ] = "separate",
+    ) -> dict[str, Any]:
+        content = await file.read(16 * 1024 * 1024 + 1)
+        content_type = file.content_type or "application/octet-stream"
+        filename = file.filename or "query-media"
+        await file.close()
+        if len(content) > 16 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="query media exceeds 16 MiB")
+        clean_query = query.strip()
+        resolved_mode = mode or ("hybrid" if clean_query else "semantic")
+        options = _search_form_options(
+            clean_query or "media query",
+            resolved_mode,
+            limit,
+            candidate_limit,
+            content_types,
+            asset_ids,
+            weights,
+            similarity_cutoffs,
+            representation_mode,
+        )
+        try:
+            prepared = await local_query(
+                {
+                    "kind": "media",
+                    "content_base64": base64.b64encode(content).decode("ascii"),
+                    "content_type": content_type,
+                    "include_embeddings": resolved_mode != "keyword",
+                    "query_text": clean_query,
+                }
+            )
+        except HTTPException:
+            raise
+        transcript = str(prepared.get("transcript", ""))
+        combined_query = clean_query or transcript
+        vector = prepared.get("vector")
+        if resolved_mode in {"hybrid", "semantic"} and vector is None:
+            raise HTTPException(
+                status_code=422,
+                detail="media query produced no searchable audio or video embeddings",
+            )
+        results = await search_workspace(
+            session,
+            request.app.state.settings.default_workspace_id,
+            query=combined_query,
+            vector=vector,
+            mode=resolved_mode,
+            limit=options.limit,
+            candidate_limit=options.candidate_limit,
+            content_types=options.content_types,
+            asset_ids=options.asset_ids,
+            weights=options.weights,
+            similarity_cutoffs=options.similarity_cutoffs,
+            representation_mode=options.representation_mode,
+        )
+        return {
+            "mode": resolved_mode,
+            "representation_mode": options.representation_mode,
+            "query": clean_query,
+            "transcript": transcript,
+            "query_window_count": prepared["query_window_count"],
+            "query_duration_seconds": prepared["query_duration_seconds"],
+            "covered_ranges_seconds": prepared["covered_ranges_seconds"],
+            "max_query_windows_per_modality": prepared[
+                "max_query_windows_per_modality"
+            ],
+            "pooled_modalities": prepared["pooled_modalities"],
+            "results": results,
+            "source_filename": filename,
+        }
 
     @app.put("/api/profiles/{profile_name}", response_model=ProfileResponse)
     async def save_profile(

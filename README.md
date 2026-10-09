@@ -79,12 +79,45 @@ curl -X POST http://127.0.0.1:8000/api/search \
   -d '{"query":"license plate","mode":"semantic","content_types":["video/mp4"],"weights":{"transcript":1,"video":2},"similarity_cutoffs":{"video":0.25}}'
 
 curl -F 'file=@reference.png' http://127.0.0.1:8000/api/search/image
+
+curl -F 'file=@recording.wav' -F 'query=blue bicycle' \
+  -F 'mode=hybrid' http://127.0.0.1:8000/api/search/media
 ```
 
-Text and image query embeddings go through the worker's private, local Unix
-socket and its single model scheduler. `mode` can be `hybrid`, `semantic`, or
-`keyword`. Image queries use cross-modal semantic retrieval. Audio/video query
-uploads and the opt-in combined representation experiment are still pending.
+Text, image, audio, and video query embeddings go through the worker's private,
+local Unix socket and its single model scheduler. `mode` can be `hybrid`,
+`semantic`, or `keyword`. Image queries use cross-modal semantic retrieval. On
+multipart image/media routes, `content_types`, `asset_ids`, `weights`, and
+`similarity_cutoffs` are JSON-encoded form fields. Media query files
+can be up to 16 MiB. To guarantee full coverage, audio queries are limited to
+120 seconds and video queries to 80 seconds; the response reports the covered
+time ranges. Longer inputs receive a clear 422 response. When text accompanies
+a media query, its text embedding is pooled equally with the audio/video
+embeddings, and its text is used for lexical matching; without supplied text,
+the extracted transcript/OCR text is used for lexical matching.
+
+Search uses `representation_mode="separate"` by default, even when combined
+vectors exist. `combined` uses only combined vectors and disables lexical
+search. `both` searches separate and combined vectors together. Enable combined
+indexing in a profile, then reprocess assets to add those vectors:
+
+```sh
+curl -X PUT http://127.0.0.1:8000/api/profiles/combined \
+  -H 'Content-Type: application/json' \
+  -d '{"options":{"strategy":"automatic","text_chunk_tokens":700,"text_overlap_tokens":80,"ocr_languages":"eng","media_preset":"automatic","combined_media_text":true}}'
+
+curl -X POST http://127.0.0.1:8000/api/assets/ASSET_ID/reprocess \
+  -H 'Content-Type: application/json' \
+  -d '{"profile_name":"combined"}'
+
+uv run python scripts/compare_combined_search.py 'fire truck'
+```
+
+The comparison command runs the same hybrid text query in separate, combined,
+and both modes. It reports API latency and top results alongside active
+representation counts and estimated float32 vector payload bytes. The byte
+estimate excludes database row and index overhead; latency includes local
+inference and PostgreSQL retrieval.
 
 ## Validation
 
@@ -104,6 +137,6 @@ SEARCH_INTEGRATION_TESTS=1 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
   uv run pytest -q tests/test_infrastructure_live.py -s
 ```
 
-The backend indexes and processes uploaded content and supports text/image
-search. Audio/video query inputs and the combined representation experiment
-remain in backend phase 3; there is no frontend yet.
+The backend indexes and processes uploaded content and supports text, image,
+and bounded audio/video queries. Combined indexing is opt-in and retrieval
+defaults to separate representations. There is no frontend yet.

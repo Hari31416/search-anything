@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -427,6 +428,15 @@ async def test_live_upload_ranges_presigned_jobs_generation_and_cleanup(
                         .where(Representation.generation_id == image_generation_id)
                     )
                     assert image_embeddings >= 2
+                    assert (
+                        await session.scalar(
+                            select(func.count(Representation.id)).where(
+                                Representation.generation_id == image_generation_id,
+                                Representation.kind == "combined",
+                            )
+                        )
+                        == 0
+                    )
                     ocr_text = await session.scalar(
                         select(Representation.text_content).where(
                             Representation.generation_id == image_generation_id,
@@ -505,6 +515,111 @@ async def test_live_upload_ranges_presigned_jobs_generation_and_cleanup(
                     ).extractor_versions
                     assert video_versions["audio_stream"] == "skipped:no_audio_stream"
                 assert worker._embedding_model is not None
+                combined_options = {**profile_options, "combined_media_text": True}
+                combined_profile = await client.put(
+                    "/api/profiles/combined",
+                    json={"options": combined_options},
+                )
+                assert combined_profile.status_code == 200, combined_profile.text
+                combined_reprocess = await client.post(
+                    f"/api/assets/{image_asset_id}/reprocess",
+                    json={"profile_name": "combined"},
+                )
+                assert combined_reprocess.status_code == 202
+                combined_generation_id = UUID(
+                    combined_reprocess.json()["generation_id"]
+                )
+                for _ in range(3):
+                    if not await worker.run_once():
+                        break
+                    async with sessions() as session:
+                        combined_generation = await session.get(
+                            ProcessingGeneration, combined_generation_id
+                        )
+                        if combined_generation.state == "active":
+                            break
+                async with sessions() as session:
+                    combined_generation = await session.get(
+                        ProcessingGeneration, combined_generation_id
+                    )
+                    assert combined_generation.state == "active"
+                    assert combined_generation.profile_snapshot["combined_media_text"]
+                    assert (
+                        combined_generation.extractor_versions["index_duration_seconds"]
+                        > 0
+                    )
+                    combined_representations = (
+                        await session.scalars(
+                            select(Representation).where(
+                                Representation.generation_id == combined_generation_id,
+                                Representation.kind == "combined",
+                            )
+                        )
+                    ).all()
+                    assert len(combined_representations) == 1
+                    combined_embedding = await session.scalar(
+                        select(Embedding).where(
+                            Embedding.representation_id
+                            == combined_representations[0].id
+                        )
+                    )
+                    assert combined_embedding is not None
+                    assert len(combined_embedding.vector) == 768
+                combined_audio_reprocess = await client.post(
+                    f"/api/assets/{audio_asset_id}/reprocess",
+                    json={"profile_name": "combined"},
+                )
+                assert combined_audio_reprocess.status_code == 202
+                combined_audio_generation_id = UUID(
+                    combined_audio_reprocess.json()["generation_id"]
+                )
+                for _ in range(4):
+                    if not await worker.run_once():
+                        break
+                    async with sessions() as session:
+                        combined_audio_generation = await session.get(
+                            ProcessingGeneration, combined_audio_generation_id
+                        )
+                        if combined_audio_generation.state == "active":
+                            break
+                async with sessions() as session:
+                    combined_audio_generation = await session.get(
+                        ProcessingGeneration, combined_audio_generation_id
+                    )
+                    assert combined_audio_generation.state == "active"
+                    combined_audio_representations = (
+                        await session.scalars(
+                            select(Representation).where(
+                                Representation.generation_id
+                                == combined_audio_generation_id,
+                                Representation.kind == "combined",
+                            )
+                        )
+                    ).all()
+                    assert combined_audio_representations
+                    combined_audio_embedding = await session.scalar(
+                        select(Embedding).where(
+                            Embedding.representation_id
+                            == combined_audio_representations[0].id
+                        )
+                    )
+                    assert combined_audio_embedding is not None
+                    audio_vector_norm = (
+                        sum(value * value for value in combined_audio_embedding.vector)
+                        ** 0.5
+                    )
+                    assert audio_vector_norm == pytest.approx(1.0, abs=1e-4)
+                    combined_audio_segment = await session.get(
+                        Segment, combined_audio_representations[0].segment_id
+                    )
+                    assert combined_audio_segment is not None
+                    assert combined_audio_segment.time_start is not None
+                    assert combined_audio_segment.time_end is not None
+                    assert combined_audio_representations[0].metadata_json[
+                        "modalities"
+                    ] == ["audio", "transcript"]
+                audio_generation_id = combined_audio_generation_id
+                image_generation_id = combined_generation_id
                 query_server = await worker._start_query_server()
                 text_search = await client.post(
                     "/api/search",
@@ -512,6 +627,12 @@ async def test_live_upload_ranges_presigned_jobs_generation_and_cleanup(
                 )
                 assert text_search.status_code == 200, text_search.text
                 text_results = text_search.json()["results"]
+                assert text_search.json()["representation_mode"] == "separate"
+                assert all(
+                    "combined" not in match["channel_evidence"]
+                    for result in text_results
+                    for match in result["matches"]
+                )
                 assert any(
                     representation["kind"] == "ocr"
                     and "fire" in (representation["text"] or "").casefold()
@@ -544,6 +665,7 @@ async def test_live_upload_ranges_presigned_jobs_generation_and_cleanup(
                             "image": 0,
                             "audio": 0,
                             "video": 0,
+                            "combined": 0,
                             "lexical": 0,
                             "identifier": 0,
                             "filename": 0,
@@ -569,6 +691,133 @@ async def test_live_upload_ranges_presigned_jobs_generation_and_cleanup(
                     result["asset_id"] == str(image_asset_id)
                     for result in image_search.json()["results"]
                 )
+                combined_search = await client.post(
+                    "/api/search",
+                    json={
+                        "query": "fire truck",
+                        "mode": "semantic",
+                        "asset_ids": [str(image_asset_id)],
+                        "representation_mode": "combined",
+                    },
+                )
+                assert combined_search.status_code == 200, combined_search.text
+                assert combined_search.json()["results"]
+                assert all(
+                    set(match["channel_evidence"]) == {"combined"}
+                    for result in combined_search.json()["results"]
+                    for match in result["matches"]
+                )
+                media_search = await client.post(
+                    "/api/search/media",
+                    data={
+                        "query": "blue bicycle",
+                        "mode": "hybrid",
+                        "asset_ids": json.dumps([str(audio_asset_id)]),
+                    },
+                    files={
+                        "file": (
+                            "query-audio.wav",
+                            long_audio_path.read_bytes(),
+                            "audio/wav",
+                        )
+                    },
+                )
+                assert media_search.status_code == 200, media_search.text
+                media_query = media_search.json()
+                assert "audio" in media_query["pooled_modalities"]
+                assert "text" in media_query["pooled_modalities"]
+                assert media_query["query_window_count"] <= 4
+                assert media_query["query_duration_seconds"] <= 120
+                assert media_query["covered_ranges_seconds"]["audio"][0][0] == 0
+                assert (
+                    media_query["covered_ranges_seconds"]["audio"][-1][1]
+                    == media_query["query_duration_seconds"]
+                )
+                video_query = await client.post(
+                    "/api/search/media",
+                    files={
+                        "file": (
+                            "query-video.mp4",
+                            video_path.read_bytes(),
+                            "video/mp4",
+                        )
+                    },
+                )
+                assert video_query.status_code == 200, video_query.text
+                video_query_body = video_query.json()
+                assert "video" in video_query_body["pooled_modalities"]
+                assert video_query_body["covered_ranges_seconds"]["audio"] == []
+                assert (
+                    video_query_body["covered_ranges_seconds"]["video"][-1][1]
+                    == video_query_body["query_duration_seconds"]
+                )
+                overlong_audio = tmp_path / "overlong-query.wav"
+                subprocess.run(
+                    [
+                        "ffmpeg",
+                        "-hide_banner",
+                        "-loglevel",
+                        "error",
+                        "-f",
+                        "lavfi",
+                        "-i",
+                        "anullsrc=r=16000:cl=mono",
+                        "-t",
+                        "121",
+                        "-c:a",
+                        "pcm_s16le",
+                        "-y",
+                        str(overlong_audio),
+                    ],
+                    check=True,
+                    timeout=30,
+                )
+                rejected_audio_query = await client.post(
+                    "/api/search/media",
+                    files={
+                        "file": (
+                            "overlong.wav",
+                            overlong_audio.read_bytes(),
+                            "audio/wav",
+                        )
+                    },
+                )
+                assert rejected_audio_query.status_code == 422
+                assert "120 seconds" in rejected_audio_query.json()["detail"]
+                overlong_video = tmp_path / "overlong-query.mp4"
+                subprocess.run(
+                    [
+                        "ffmpeg",
+                        "-hide_banner",
+                        "-loglevel",
+                        "error",
+                        "-f",
+                        "lavfi",
+                        "-i",
+                        "color=c=black:s=96x64:r=1:d=81",
+                        "-an",
+                        "-c:v",
+                        "libx264",
+                        "-pix_fmt",
+                        "yuv420p",
+                        "-y",
+                        str(overlong_video),
+                    ],
+                    check=True,
+                    timeout=30,
+                )
+                rejected_video_query = await client.post(
+                    "/api/search/media",
+                    files={
+                        "file": (
+                            "overlong.mp4",
+                            overlong_video.read_bytes(),
+                            "video/mp4",
+                        )
+                    },
+                )
+                assert rejected_video_query.status_code == 422
+                assert "80 seconds" in rejected_video_query.json()["detail"]
                 query_server.close()
                 await query_server.wait_closed()
                 settings.model_socket_path.unlink(missing_ok=True)

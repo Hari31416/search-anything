@@ -26,6 +26,7 @@ DEFAULT_WEIGHTS = {
     "image": 1.0,
     "audio": 1.0,
     "video": 1.0,
+    "combined": 1.0,
     "lexical": 1.0,
     "identifier": 1.0,
     "filename": 1.0,
@@ -314,6 +315,7 @@ async def search_workspace(
     asset_ids: list[UUID] | None = None,
     weights: dict[str, float] | None = None,
     similarity_cutoffs: dict[str, float] | None = None,
+    representation_mode: str = "separate",
     model_revision: str = MODEL_REVISION,
 ) -> list[dict[str, Any]]:
     base = (
@@ -336,7 +338,20 @@ async def search_workspace(
 
     channels: dict[str, list[Candidate]] = {}
     if mode in {"semantic", "hybrid"} and vector is not None:
-        for kind in ("text", "transcript", "ocr", "image", "audio", "video"):
+        kinds = {
+            "separate": ("text", "transcript", "ocr", "image", "audio", "video"),
+            "combined": ("combined",),
+            "both": (
+                "text",
+                "transcript",
+                "ocr",
+                "image",
+                "audio",
+                "video",
+                "combined",
+            ),
+        }[representation_mode]
+        for kind in kinds:
             distance = Embedding.vector.cosine_distance(vector)
             rows = (
                 await session.execute(
@@ -367,7 +382,11 @@ async def search_workspace(
                         )
                     )
 
-    if mode in {"keyword", "hybrid"} and query.strip():
+    if (
+        mode in {"keyword", "hybrid"}
+        and representation_mode != "combined"
+        and query.strip()
+    ):
         tsquery = func.websearch_to_tsquery("simple", query.strip())
         body_vector = func.setweight(
             func.to_tsvector(

@@ -128,6 +128,36 @@ class LocalEmbeddingModel:
         self._processed(value)
         return self._encode([value])[0]
 
+    def embed_combined(
+        self,
+        text: str,
+        *,
+        image: Any | None = None,
+        audio_path: Path | None = None,
+        video_frames: Sequence[Any] | None = None,
+    ) -> list[float]:
+        """Embed text with its aligned media using the model's mixed-input schema."""
+        clean = text.strip()
+        if not clean:
+            raise EmbeddingError("combined embedding requires aligned text")
+        value: dict[str, Any] = {"text": clean}
+        markers: list[str] = []
+        if image is not None:
+            value["image"] = image
+            markers.append("<|image|>")
+        if audio_path is not None:
+            audio_window_duration(audio_path)
+            value["audio"] = str(audio_path)
+            markers.append("<|audio|>")
+        if video_frames:
+            value["video"] = [list(video_frames)]
+            markers.append("<|video|>")
+        if not markers:
+            raise EmbeddingError("combined embedding requires at least one media input")
+        value["text"] = f"{clean} {' '.join(markers)}"
+        self._processed(value)
+        return self._encode([value])[0]
+
     def _encode(self, values: Sequence[Any]) -> list[list[float]]:
         vectors = self.model.encode(
             list(values),

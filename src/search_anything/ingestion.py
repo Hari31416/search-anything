@@ -56,6 +56,7 @@ class IngestionOptions(BaseModel):
     text_chunk_tokens: int = Field(default=700, ge=64, le=4096)
     text_overlap_tokens: int = Field(default=80, ge=0, le=512)
     ocr_languages: str = Field(default="eng", min_length=1, max_length=100)
+    combined_media_text: bool = False
 
     def resolved_media_preset(self, content_type: str) -> str:
         if self.media_preset != "automatic":

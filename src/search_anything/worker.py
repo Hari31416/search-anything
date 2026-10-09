@@ -6,12 +6,14 @@ import asyncio
 import base64
 import json
 import logging
+import math
 import os
 import shutil
 import socket
 import stat
 import subprocess
 import tempfile
+import time
 from contextlib import suppress
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -47,6 +49,7 @@ from search_anything.embeddings import (
     DIMENSIONS,
     MODEL_ID,
     MODEL_REVISION,
+    ContextLimitError,
     LocalEmbeddingModel,
     document_embedding_text,
 )
@@ -60,6 +63,7 @@ from search_anything.ingestion import (
 )
 from search_anything.media import (
     MAX_AUDIO_WINDOW_SECONDS,
+    MediaWindow,
     extract_audio_window,
     extract_video_frames,
     load_whisper,
@@ -141,7 +145,7 @@ class Worker:
         server = await asyncio.start_unix_server(
             self._handle_query_connection,
             path=str(path),
-            limit=12 * 1024 * 1024,
+            limit=24 * 1024 * 1024,
         )
         os.chmod(path, 0o600)
         logger.info("Local query inference socket ready at %s", path)
@@ -173,6 +177,35 @@ class Worker:
                 finally:
                     image.close()
                 response = {"vector": vector}
+            elif kind == "image_text":
+                raw = await asyncio.to_thread(
+                    base64.b64decode, request["content_base64"], validate=True
+                )
+                if len(raw) > 8 * 1024 * 1024:
+                    raise ValueError("query image exceeds the 8 MiB limit")
+                image = await asyncio.to_thread(self._decode_query_image, raw)
+                try:
+                    vector = await self.scheduler.submit(
+                        self._embed_combined,
+                        str(request.get("text", "")),
+                        image=image,
+                        kind="query",
+                    )
+                finally:
+                    image.close()
+                response = {"vector": vector}
+            elif kind == "media":
+                raw = await asyncio.to_thread(
+                    base64.b64decode, request["content_base64"], validate=True
+                )
+                if len(raw) > 16 * 1024 * 1024:
+                    raise ValueError("query media exceeds the 16 MiB limit")
+                response = await self._prepare_media_query(
+                    raw,
+                    str(request.get("content_type", "application/octet-stream")),
+                    include_embeddings=bool(request.get("include_embeddings", True)),
+                    query_text=str(request.get("query_text", "")),
+                )
             else:
                 raise ValueError("unsupported local query input")
         except Exception as error:
@@ -192,6 +225,176 @@ class Worker:
         from search_anything.ingestion import _open_image
 
         return _open_image(raw)
+
+    @staticmethod
+    def _pool_query_vectors(vectors: list[list[float]]) -> list[float]:
+        import numpy as np
+
+        if not vectors:
+            raise ValueError("media query produced no searchable modality vectors")
+        pooled = np.asarray(vectors, dtype=np.float32).mean(axis=0)
+        norm = float(np.linalg.norm(pooled))
+        if not np.isfinite(pooled).all() or norm < 1e-8:
+            raise ValueError("media query vector pooling produced an invalid vector")
+        return (pooled / norm).tolist()
+
+    @staticmethod
+    def _bounded_query_windows(
+        duration: float,
+        window_seconds: float,
+        max_windows: int = 4,
+        modality: str = "media",
+    ) -> list[MediaWindow]:
+        if duration <= 0:
+            raise ValueError("media query duration must be positive")
+        maximum_duration = window_seconds * max_windows
+        if duration > maximum_duration:
+            raise ValueError(
+                f"{modality} query duration exceeds {maximum_duration:g} seconds; "
+                f"all {modality} must be covered"
+            )
+        count = min(max_windows, max(1, math.ceil(duration / window_seconds)))
+        latest_start = max(0.0, duration - window_seconds)
+        if count == 1:
+            starts = [0.0]
+        else:
+            starts = [latest_start * index / (count - 1) for index in range(count)]
+        return [
+            MediaWindow(start, min(duration, start + window_seconds))
+            for start in starts
+        ]
+
+    async def _prepare_media_query(
+        self,
+        content: bytes,
+        content_type: str,
+        *,
+        include_embeddings: bool,
+        query_text: str = "",
+    ) -> dict[str, Any]:
+        modality_vectors: dict[str, list[list[float]]] = {"audio": [], "video": []}
+        transcript_parts: list[str] = []
+        total_audio_windows = 0
+        total_video_windows = 0
+        with tempfile.TemporaryDirectory(prefix="search-anything-query-") as temp_dir:
+            temp = Path(temp_dir)
+            source = temp / "query-media"
+            await asyncio.to_thread(source.write_bytes, content)
+            probe = await asyncio.to_thread(probe_media, source)
+            if not probe.has_audio and not probe.has_video:
+                raise ValueError("query media has no decodable audio or video stream")
+            audio_windows = (
+                self._bounded_query_windows(
+                    probe.duration_seconds, 30.0, modality="audio"
+                )
+                if probe.has_audio
+                else []
+            )
+            video_windows = (
+                self._bounded_query_windows(
+                    probe.duration_seconds, 20.0, modality="video"
+                )
+                if content_type.startswith("video/") and probe.has_video
+                else []
+            )
+            if probe.has_audio:
+                for ordinal, window in enumerate(audio_windows):
+                    audio_path = temp / f"query-audio-{ordinal:02d}.wav"
+                    await asyncio.to_thread(
+                        extract_audio_window, source, audio_path, window
+                    )
+                    transcription = await self.scheduler.submit(
+                        self._transcribe, audio_path, None, kind="query"
+                    )
+                    transcript_parts.extend(
+                        str(segment.get("text", "")).strip()
+                        for segment in transcription.get("segments", [])
+                        if str(segment.get("text", "")).strip()
+                    )
+                    if include_embeddings:
+                        modality_vectors["audio"].append(
+                            await self.scheduler.submit(
+                                self._embed_audio, audio_path, kind="query"
+                            )
+                        )
+                    total_audio_windows += 1
+                    audio_path.unlink(missing_ok=True)
+
+            if content_type.startswith("video/") and probe.has_video:
+                for ordinal, window in enumerate(video_windows):
+                    frame_dir = temp / f"query-frames-{ordinal:02d}"
+                    decoded = await asyncio.to_thread(
+                        extract_video_frames, source, frame_dir, window, 1.0
+                    )
+                    images = await asyncio.to_thread(
+                        self._open_query_frames, decoded.paths
+                    )
+                    try:
+                        if include_embeddings and images:
+                            modality_vectors["video"].append(
+                                await self.scheduler.submit(
+                                    self._embed_video, images, kind="query"
+                                )
+                            )
+                        for index in range(0, len(images), max(1, len(images) // 4)):
+                            image_bytes = await asyncio.to_thread(
+                                self._encode_frame_png, images[index]
+                            )
+                            ocr_result = await asyncio.to_thread(
+                                self._ocr_bytes,
+                                image_bytes,
+                                self.settings.ocr_languages,
+                            )
+                            if ocr_result["text"].strip():
+                                transcript_parts.append(ocr_result["text"].strip())
+                        total_video_windows += 1
+                    finally:
+                        for image in images:
+                            image.close()
+                        for path in decoded.paths:
+                            path.unlink(missing_ok=True)
+                        frame_dir.rmdir()
+
+        modality_pools = [
+            self._pool_query_vectors(vectors)
+            for vectors in modality_vectors.values()
+            if vectors
+        ]
+        pooled_modalities = [
+            name for name, vectors in modality_vectors.items() if vectors
+        ]
+        if include_embeddings and query_text.strip():
+            modality_pools.append(
+                await self.scheduler.submit(
+                    self._embed_query_text, query_text, kind="query"
+                )
+            )
+            pooled_modalities.append("text")
+        transcript = "\n".join(transcript_parts)
+        if len(transcript) > 20_000:
+            raise ValueError(
+                "media query transcript exceeds 20000 characters; no text was indexed"
+            )
+        return {
+            "vector": (
+                self._pool_query_vectors(modality_pools) if modality_pools else None
+            ),
+            "transcript": transcript,
+            "query_window_count": max(total_audio_windows, total_video_windows),
+            "query_duration_seconds": probe.duration_seconds,
+            "covered_ranges_seconds": {
+                "audio": [[window.start, window.end] for window in audio_windows],
+                "video": [[window.start, window.end] for window in video_windows],
+            },
+            "pooled_modalities": pooled_modalities,
+            "max_query_windows_per_modality": 4,
+        }
+
+    @staticmethod
+    def _open_query_frames(paths: list[Path]) -> list[Any]:
+        from PIL import Image
+
+        return [Image.open(path).convert("RGB") for path in paths]
 
     async def run_once(self) -> bool:
         job = await claim_job(
@@ -419,6 +622,45 @@ class Worker:
     def _embed_video(self, frames: list[Any]) -> list[float]:
         return self._model().embed_video(frames)
 
+    def _embed_combined(
+        self,
+        text: str,
+        *,
+        image: Any | None = None,
+        audio_path: Path | None = None,
+        video_frames: list[Any] | None = None,
+    ) -> list[float]:
+        return self._model().embed_combined(
+            text,
+            image=image,
+            audio_path=audio_path,
+            video_frames=video_frames,
+        )
+
+    async def _try_embed_combined(
+        self,
+        text: str,
+        *,
+        kind: str,
+        image: Any | None = None,
+        audio_path: Path | None = None,
+        video_frames: list[Any] | None = None,
+    ) -> tuple[list[float] | None, str | None]:
+        try:
+            vector = await self.scheduler.submit(
+                self._embed_combined,
+                text,
+                image=image,
+                audio_path=audio_path,
+                video_frames=video_frames,
+                kind=kind,
+            )
+            return vector, None
+        except ContextLimitError as error:
+            message = str(error)[:240]
+            logger.warning("Skipping combined representation: %s", message)
+            return None, message
+
     def _transcribe(self, path: Path, language: str | None) -> dict[str, Any]:
         if self._whisper_model is None:
             self._whisper_model = load_whisper(self.settings.whisper_checkpoint_path)
@@ -466,10 +708,13 @@ class Worker:
         frame_count = 0
         ocr_seen: dict[str, int] = {}
         transcription_language: str | None = None
+        combined_count = 0
+        combined_context_failures: list[str] = []
 
         with tempfile.TemporaryDirectory(prefix="search-anything-av-") as temporary:
             temp = Path(temporary)
             for ordinal, window in enumerate(windows):
+                audio_inputs: list[dict[str, Any]] = []
                 if probe.has_audio:
                     audio_windows = split_audio_window(
                         window, sample["overlap_seconds"]
@@ -488,12 +733,14 @@ class Worker:
                             kind="ingestion",
                         )
                         transcription_language = transcription.get("language")
+                        transcript_texts: list[str] = []
                         for index, segment in enumerate(
                             transcription.get("segments", [])
                         ):
                             text = str(segment.get("text", "")).strip()
                             if not text:
                                 continue
+                            transcript_texts.append(text)
                             words = segment.get("words") or []
                             if words:
                                 relative_start = min(
@@ -557,7 +804,13 @@ class Worker:
                             }
                         )
                         audio_window_count += 1
-                        audio_path.unlink(missing_ok=True)
+                        audio_inputs.append(
+                            {
+                                "window": audio_window,
+                                "path": audio_path,
+                                "transcript": transcript_texts,
+                            }
+                        )
 
                 if is_video_asset and probe.has_video:
                     frame_dir = temp / f"frames-{ordinal:06d}"
@@ -571,6 +824,7 @@ class Worker:
                     from PIL import Image
 
                     images = [Image.open(path).convert("RGB") for path in decoded.paths]
+                    frame_ocr_texts: list[str] = []
                     try:
                         for image, path, timestamp in zip(
                             images, decoded.paths, decoded.timestamps
@@ -582,6 +836,7 @@ class Worker:
                                 self._ocr_bytes, encoded, options.ocr_languages
                             )
                             text = ocr["text"].strip()
+                            frame_ocr_texts.append(text)
                             if text:
                                 end = min(
                                     window.end,
@@ -640,12 +895,135 @@ class Worker:
                                 }
                             )
                             frame_count += len(images)
+                        if options.combined_media_text:
+                            if audio_inputs:
+                                for audio_input in audio_inputs:
+                                    audio_window = audio_input["window"]
+                                    matched_indices = [
+                                        index
+                                        for index, timestamp in enumerate(
+                                            decoded.timestamps
+                                        )
+                                        if audio_window.start
+                                        <= timestamp
+                                        < audio_window.end
+                                    ]
+                                    aligned_text = list(audio_input["transcript"])
+                                    aligned_text.extend(
+                                        frame_ocr_texts[index]
+                                        for index in matched_indices
+                                        if frame_ocr_texts[index]
+                                    )
+                                    if not aligned_text:
+                                        continue
+                                    matched_frames = [
+                                        images[index] for index in matched_indices
+                                    ]
+                                    vector, failure = await self._try_embed_combined(
+                                        document_embedding_text(
+                                            None, "\n".join(aligned_text)
+                                        ),
+                                        kind="ingestion",
+                                        audio_path=audio_input["path"],
+                                        video_frames=matched_frames or None,
+                                    )
+                                    if failure:
+                                        combined_context_failures.append(failure)
+                                        continue
+                                    assert vector is not None
+                                    media_records.append(
+                                        {
+                                            "kind": "combined",
+                                            "start": audio_window.start,
+                                            "end": audio_window.end,
+                                            "vector": vector,
+                                            "metadata": {
+                                                "modalities": [
+                                                    *["audio", "transcript"],
+                                                    *(
+                                                        ["video"]
+                                                        if matched_frames
+                                                        else []
+                                                    ),
+                                                    *(
+                                                        ["ocr"]
+                                                        if any(
+                                                            frame_ocr_texts[index]
+                                                            for index in matched_indices
+                                                        )
+                                                        else []
+                                                    ),
+                                                ],
+                                                "profile_preset": preset,
+                                            },
+                                        }
+                                    )
+                                    combined_count += 1
+                            elif images and any(frame_ocr_texts):
+                                vector, failure = await self._try_embed_combined(
+                                    document_embedding_text(
+                                        None,
+                                        "\n".join(
+                                            text for text in frame_ocr_texts if text
+                                        ),
+                                    ),
+                                    kind="ingestion",
+                                    video_frames=images,
+                                )
+                                if failure:
+                                    combined_context_failures.append(failure)
+                                    continue
+                                assert vector is not None
+                                media_records.append(
+                                    {
+                                        "kind": "combined",
+                                        "start": window.start,
+                                        "end": window.end,
+                                        "vector": vector,
+                                        "metadata": {
+                                            "modalities": ["video", "ocr"],
+                                            "profile_preset": preset,
+                                        },
+                                    }
+                                )
+                                combined_count += 1
                     finally:
                         for image in images:
                             image.close()
                         for path in decoded.paths:
                             path.unlink(missing_ok=True)
                         frame_dir.rmdir()
+                elif options.combined_media_text:
+                    for audio_input in audio_inputs:
+                        if not audio_input["transcript"]:
+                            continue
+                        audio_window = audio_input["window"]
+                        vector, failure = await self._try_embed_combined(
+                            document_embedding_text(
+                                None, "\n".join(audio_input["transcript"])
+                            ),
+                            kind="ingestion",
+                            audio_path=audio_input["path"],
+                        )
+                        if failure:
+                            combined_context_failures.append(failure)
+                            continue
+                        assert vector is not None
+                        media_records.append(
+                            {
+                                "kind": "combined",
+                                "start": audio_window.start,
+                                "end": audio_window.end,
+                                "vector": vector,
+                                "metadata": {
+                                    "modalities": ["audio", "transcript"],
+                                    "profile_preset": preset,
+                                },
+                            }
+                        )
+                        combined_count += 1
+                for audio_input in audio_inputs:
+                    audio_input["path"].unlink(missing_ok=True)
 
         versions = {
             "ffprobe": probe.ffprobe_version,
@@ -661,6 +1039,8 @@ class Worker:
             ),
             "video_frames": frame_count,
             "transcript_segments": transcript_count,
+            "combined_representations": combined_count,
+            "combined_context_failures": combined_context_failures,
             "whisper_model": (
                 self.settings.whisper_model_name if probe.has_audio else None
             ),
@@ -691,6 +1071,7 @@ class Worker:
         return {"text": result.text, "words": result.words}
 
     async def index_generation(self, job: LeasedJob) -> None:
+        indexing_started = time.perf_counter()
         if job.asset_id is None or job.generation_id is None:
             raise ValueError("index job is missing an asset or generation")
         async with self.session_factory() as session:
@@ -767,12 +1148,34 @@ class Worker:
             if image is not None
             else None
         )
+        combined_text_vectors: dict[int, list[float]] = {}
+        combined_context_failures: list[str] = []
+        if generation_options.combined_media_text and image is not None:
+            for ordinal, chunk in enumerate(chunks):
+                if chunk.kind != "ocr" or not chunk.text.strip():
+                    continue
+                vector, failure = await self._try_embed_combined(
+                    document_embedding_text(filename, chunk.text),
+                    kind="ingestion",
+                    image=image,
+                )
+                if failure:
+                    combined_context_failures.append(failure)
+                    continue
+                assert vector is not None
+                combined_text_vectors[ordinal] = vector
         extractor_versions.update(
             {
                 "text_extractor": "local-structure-v1",
                 "embedding_model": MODEL_ID,
                 "embedding_revision": MODEL_REVISION,
                 "embedding_dimensions": DIMENSIONS,
+                "combined_media_text": {
+                    "enabled": generation_options.combined_media_text,
+                    "representations": len(combined_text_vectors)
+                    + sum(record["kind"] == "combined" for record in media_records),
+                    "context_failures": combined_context_failures,
+                },
             }
         )
         if image is not None or any(chunk.kind == "ocr" for chunk in chunks):
@@ -869,6 +1272,32 @@ class Worker:
                             ),
                         ]
                     )
+                    combined_vector = combined_text_vectors.get(ordinal)
+                    if combined_vector is not None:
+                        combined = Representation(
+                            id=uuid4(),
+                            generation_id=job.generation_id,
+                            segment_id=segment_id,
+                            kind="combined",
+                            text_content=chunk.text,
+                            metadata_json={
+                                "source_location": chunk.location,
+                                "modalities": ["image", "ocr"],
+                            },
+                        )
+                        session.add_all(
+                            [
+                                combined,
+                                Embedding(
+                                    id=uuid4(),
+                                    representation_id=combined.id,
+                                    model_id=MODEL_ID,
+                                    model_revision=MODEL_REVISION,
+                                    dimensions=DIMENSIONS,
+                                    vector=combined_vector,
+                                ),
+                            ]
+                        )
                 if image_vector is not None:
                     image_representation = Representation(
                         id=uuid4(),
@@ -932,6 +1361,9 @@ class Worker:
                 current_generation.extractor_versions = {
                     **current_generation.extractor_versions,
                     **extractor_versions,
+                    "index_duration_seconds": round(
+                        time.perf_counter() - indexing_started, 3
+                    ),
                 }
                 current_generation.state = "complete"
                 if extracted_pages is not None:

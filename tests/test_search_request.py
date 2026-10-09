@@ -24,6 +24,7 @@ def test_search_limits_require_candidate_oversampling() -> None:
                 "image",
                 "audio",
                 "video",
+                "combined",
                 "lexical",
                 "identifier",
                 "filename",
@@ -51,3 +52,14 @@ def test_similarity_cutoffs_are_limited_to_dense_channels() -> None:
     assert request.similarity_cutoffs == {"video": 0.2}
     with pytest.raises(ValidationError, match="dense representation"):
         SearchRequest(query="local", similarity_cutoffs={"lexical": 0.2})
+
+
+@pytest.mark.parametrize("mode", ["separate", "combined", "both"])
+def test_representation_mode_is_explicit(mode: str) -> None:
+    request = SearchRequest(query="local", representation_mode=mode)
+    assert request.representation_mode == mode
+
+
+def test_representation_mode_rejects_unknown_value() -> None:
+    with pytest.raises(ValidationError):
+        SearchRequest(query="local", representation_mode="all")

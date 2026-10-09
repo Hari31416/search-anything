@@ -15,6 +15,7 @@ dependencies = [
     "pillow==11.3.0",
     "psycopg[binary]==3.3.6",
     "pydantic-settings==2.15.0",
+    "python-multipart>=0.0.32",
     "sentence-transformers==6.1.0",
     "sqlalchemy[asyncio]==2.0.54",
     "torch==2.14.1",
@@ -22,6 +23,9 @@ dependencies = [
     "transformers==5.19.0",
     "uvicorn[standard]==0.54.0",
 ]
+
+[project.scripts]
+search-anything = "search_anything.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.12.1,<0.13.0"]

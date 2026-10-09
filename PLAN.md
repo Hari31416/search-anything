@@ -1,6 +1,6 @@
 # Search Anything build plan
 
-Status: implementation in progress. Phase 0 is complete; phase 1 is underway.
+Status: implementation in progress. Phases 0 and 1 are complete; phase 2 is next.
 
 Updated: 2026-10-09.
 
@@ -220,9 +220,12 @@ Use small local fixtures to check functional correctness, independent of the lat
   text/image, and combined inputs. CPU float32 is the verified fallback. Local
   Whisper tiny inference and Tesseract OCR ran against fixtures. Measurements
   and limitations are in `docs/local-models.md`.
-- Phase 1 in progress. The uv environment and lockfile are committed. Next work
-  is PostgreSQL/RustFS composition, persistence, storage, durable jobs, and the
-  local inference scheduler.
+- Phase 1 complete. PostgreSQL/RustFS composition, migrations, workspace-scoped
+  uploads, downloads, byte ranges, presigned access, cleanup, durable fenced
+  jobs, probing, and the single-owner inference scheduler are implemented and
+  covered by unit and live integration checks. Uploads are currently probed;
+  extraction, indexing, and search begin in phase 2. Details and run commands
+  are in `docs/backend-foundation.md`.
 
 ## Planning sources
 

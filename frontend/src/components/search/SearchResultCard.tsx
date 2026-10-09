@@ -9,6 +9,7 @@ import {
   ChevronDown,
   ChevronUp,
   Download,
+  Sparkles,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { MatchItem } from '@/components/search/MatchItem'
@@ -70,11 +71,11 @@ export function SearchResultCard({
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-2xs transition-shadow hover:shadow-xs">
+    <div className="overflow-hidden rounded-xl border border-border/80 bg-card shadow-xs transition-all duration-200 hover:border-border hover:shadow-md">
       {/* Asset Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 bg-muted/30 px-5 py-3.5">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 bg-muted/20 px-5 py-3.5">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-background shadow-2xs">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-background shadow-2xs">
             {renderTypeIcon()}
           </div>
 
@@ -87,6 +88,8 @@ export function SearchResultCard({
               {result.filename}
             </h3>
             <div className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
+              <span className="capitalize">{category}</span>
+              <span>&bull;</span>
               <span>{result.content_type}</span>
               <span>&bull;</span>
               <span title={`Generation ${result.generation_id}`}>
@@ -96,15 +99,18 @@ export function SearchResultCard({
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           {/* Prominent Fused Score Badge */}
-          <div className="flex items-center gap-2 rounded-lg border border-primary/25 bg-primary/10 px-3 py-1.5 shadow-2xs">
-            <span className="text-[10px] font-bold tracking-wider text-muted-foreground uppercase">
-              Fused Score
-            </span>
-            <span className="font-mono text-base font-extrabold text-primary sm:text-lg">
-              {formatScore(result.score)}
-            </span>
+          <div className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-1.5 shadow-2xs">
+            <Sparkles className="size-3.5 text-primary" />
+            <div className="flex flex-col">
+              <span className="text-[9px] leading-none font-bold tracking-wider text-muted-foreground uppercase">
+                Fused Score
+              </span>
+              <span className="font-mono text-sm leading-tight font-extrabold text-primary sm:text-base">
+                {formatScore(result.score)}
+              </span>
+            </div>
           </div>
 
           <Button
@@ -115,11 +121,11 @@ export function SearchResultCard({
           >
             {showInlinePreview ? (
               <>
-                <ChevronUp className="size-3" /> Hide Preview
+                <ChevronUp className="size-3" /> Hide Media
               </>
             ) : (
               <>
-                <ChevronDown className="size-3" /> Show Preview
+                <ChevronDown className="size-3" /> Show Media
               </>
             )}
           </Button>
@@ -129,29 +135,43 @@ export function SearchResultCard({
             size="xs"
             onClick={() => onPreviewAsset(asAsset)}
             className="gap-1 text-xs"
-            title="Open modal preview"
+            title="Open theater modal preview"
           >
             <Eye className="size-3" />
-            Modal
+            Theater View
+          </Button>
+
+          <Button variant="ghost" size="icon-xs" asChild title="Download file">
+            <a href={contentUrl} download={result.filename}>
+              <Download className="size-3.5 text-muted-foreground" />
+            </a>
           </Button>
         </div>
       </div>
 
-      {/* Inline Preview Section (Rendered by default) */}
+      {/* Prominent Media Display Section */}
       {showInlinePreview && (
-        <div className="border-b border-border/50 bg-muted/15 p-4 animate-in fade-in-50 duration-200">
-          <div className="flex flex-col items-center justify-center overflow-hidden rounded-lg border border-border/80 bg-background/90 p-2">
+        <div className="animate-in border-b border-border/50 bg-black/5 p-4 duration-200 fade-in-50 dark:bg-black/30">
+          <div className="flex flex-col items-center justify-center overflow-hidden rounded-xl border border-border/70 bg-background/80 shadow-inner">
             {category === 'image' ? (
-              <div className="group relative flex max-h-80 w-full items-center justify-center overflow-hidden rounded bg-black/5 dark:bg-black/20">
+              <div
+                className="group relative flex max-h-96 w-full cursor-pointer items-center justify-center overflow-hidden bg-black/10 p-2 dark:bg-black/40"
+                onClick={() => onPreviewAsset(asAsset)}
+              >
                 <img
                   src={contentUrl}
                   alt={result.filename}
-                  className="max-h-72 w-auto rounded object-contain transition-transform group-hover:scale-[1.01]"
+                  className="max-h-80 w-auto rounded-lg object-contain transition-transform duration-300 group-hover:scale-[1.02]"
                   loading="lazy"
                 />
+                <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                  <span className="flex items-center gap-1.5 rounded-full bg-black/70 px-3 py-1 text-xs font-medium text-white backdrop-blur-xs">
+                    <Eye className="size-3.5" /> Click for Theater View
+                  </span>
+                </div>
               </div>
             ) : category === 'video' ? (
-              <div className="w-full">
+              <div className="w-full bg-black p-2">
                 <video
                   ref={(el) => {
                     mediaRef.current = el
@@ -159,40 +179,55 @@ export function SearchResultCard({
                   src={contentUrl}
                   controls
                   preload="metadata"
-                  className="max-h-80 w-full rounded bg-black object-contain"
+                  className="max-h-96 w-full rounded-lg bg-black object-contain shadow-md"
                 >
                   Your browser does not support HTML5 video.
                 </video>
               </div>
             ) : category === 'audio' ? (
-              <div className="flex w-full flex-col items-center gap-2 p-3">
+              <div className="flex w-full flex-col items-center gap-3 bg-gradient-to-r from-violet-950/15 via-background to-violet-950/15 p-6">
+                <div className="flex items-center gap-3">
+                  <div className="flex size-11 items-center justify-center rounded-full bg-violet-500/15 text-violet-500">
+                    <Music className="size-5" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-foreground">
+                      {result.filename}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Audio Stream &bull; Select matched moments below to jump
+                      to timestamp
+                    </p>
+                  </div>
+                </div>
                 <audio
                   ref={(el) => {
                     mediaRef.current = el
                   }}
                   src={contentUrl}
                   controls
-                  className="w-full max-w-md"
+                  className="w-full max-w-xl"
                 >
                   Your browser does not support HTML5 audio.
                 </audio>
               </div>
             ) : result.content_type === 'application/pdf' ? (
-              <div className="h-72 w-full">
+              <div className="h-80 w-full">
                 <iframe
                   src={`${contentUrl}#view=FitH`}
                   title={result.filename}
-                  className="h-full w-full rounded border-0"
+                  className="h-full w-full rounded-lg border-0"
                 />
               </div>
             ) : (
-              <div className="flex items-center justify-between w-full p-2 text-xs text-muted-foreground">
-                <span className="truncate max-w-md">
-                  Original source document: <strong className="text-foreground">{result.filename}</strong>
+              <div className="flex w-full items-center justify-between p-4 text-xs text-muted-foreground">
+                <span className="max-w-md truncate">
+                  Source document:{' '}
+                  <strong className="text-foreground">{result.filename}</strong>
                 </span>
                 <Button size="xs" variant="outline" asChild>
                   <a href={contentUrl} download={result.filename}>
-                    <Download className="size-3 mr-1" /> Download
+                    <Download className="mr-1 size-3" /> Download
                   </a>
                 </Button>
               </div>
@@ -204,7 +239,7 @@ export function SearchResultCard({
       {/* Matches List */}
       <div className="space-y-3 p-5">
         <div className="flex items-center justify-between text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-          <span>Matching Passages &amp; Moments ({result.matches.length})</span>
+          <span>Matching Moments &amp; Passages ({result.matches.length})</span>
         </div>
 
         <div className="space-y-2.5">

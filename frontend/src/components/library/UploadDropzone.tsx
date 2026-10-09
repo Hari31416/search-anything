@@ -26,7 +26,9 @@ interface UploadProgressState {
 export function UploadDropzone({ onUploadSuccess }: UploadDropzoneProps) {
   const [isDragging, setIsDragging] = React.useState(false)
   const [uploading, setUploading] = React.useState(false)
-  const [progress, setProgress] = React.useState<UploadProgressState | null>(null)
+  const [progress, setProgress] = React.useState<UploadProgressState | null>(
+    null
+  )
   const [errors, setErrors] = React.useState<string[]>([])
   const [successCount, setSuccessCount] = React.useState<number>(0)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
@@ -96,10 +98,11 @@ export function UploadDropzone({ onUploadSuccess }: UploadDropzoneProps) {
         onDragLeave={onDragLeave}
         onDrop={onDrop}
         onClick={() => !uploading && fileInputRef.current?.click()}
-        className={`group relative flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-8 text-center transition-all ${isDragging
-            ? 'border-primary bg-primary/5'
-            : 'border-border/80 bg-card hover:border-primary/50 hover:bg-muted/30'
-          } ${uploading ? 'pointer-events-none opacity-80' : ''}`}
+        className={`group relative flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed p-8 text-center transition-all duration-200 ${
+          isDragging
+            ? 'scale-[1.005] border-primary bg-primary/10'
+            : 'border-border/80 bg-card/60 hover:border-primary/50 hover:bg-muted/30'
+        } ${uploading ? 'pointer-events-none opacity-80' : ''}`}
       >
         <input
           ref={fileInputRef}
@@ -111,55 +114,57 @@ export function UploadDropzone({ onUploadSuccess }: UploadDropzoneProps) {
         />
 
         <div className="flex flex-col items-center gap-3">
-          <div className="flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary transition-transform group-hover:scale-105">
+          <div className="flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-inner transition-transform group-hover:scale-105">
             {uploading ? (
-              <Loader2 className="size-6 animate-spin text-primary" />
+              <Loader2 className="size-7 animate-spin text-primary" />
             ) : (
-              <UploadCloud className="size-6 text-primary" />
+              <UploadCloud className="size-7 text-primary" />
             )}
           </div>
 
           <div>
-            <p className="text-sm font-semibold text-foreground">
+            <p className="text-sm font-bold text-foreground">
               {uploading && progress
                 ? progress.total > 1
-                  ? `Uploading ${progress.current} of ${progress.total}: ${progress.currentFileName}...`
-                  : `Uploading ${progress.currentFileName}...`
-                : 'Click to select files or drag and drop multiple files'}
+                  ? `Indexing ${progress.current} of ${progress.total}: ${progress.currentFileName}...`
+                  : `Indexing ${progress.currentFileName}...`
+                : 'Drop media files here or click to browse'}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Documents (.pdf, .docx, .txt, .md, .html, .py), Images (.png, .jpg, .webp), Audio &amp; Video
+              Images (.png, .jpg, .webp), Videos (.mp4, .webm, .mkv), Audio
+              (.wav, .mp3, .m4a), and Documents
             </p>
           </div>
 
           <div className="mt-2 flex flex-wrap items-center justify-center gap-2 text-[11px] text-muted-foreground">
-            <span className="inline-flex items-center gap-1 rounded bg-muted px-2 py-0.5">
-              <FileText className="size-3 text-muted-foreground" /> Docs
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-muted/50 px-2.5 py-1 font-medium">
+              <ImageIcon className="size-3 text-emerald-500" /> Images
             </span>
-            <span className="inline-flex items-center gap-1 rounded bg-muted px-2 py-0.5">
-              <ImageIcon className="size-3 text-muted-foreground" /> Images
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-muted/50 px-2.5 py-1 font-medium">
+              <Video className="size-3 text-amber-500" /> Videos
             </span>
-            <span className="inline-flex items-center gap-1 rounded bg-muted px-2 py-0.5">
-              <Music className="size-3 text-muted-foreground" /> Audio
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-muted/50 px-2.5 py-1 font-medium">
+              <Music className="size-3 text-violet-500" /> Audio
             </span>
-            <span className="inline-flex items-center gap-1 rounded bg-muted px-2 py-0.5">
-              <Video className="size-3 text-muted-foreground" /> Video
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-muted/50 px-2.5 py-1 font-medium">
+              <FileText className="size-3 text-sky-500" /> Documents
             </span>
           </div>
         </div>
       </div>
 
       {successCount > 0 && !uploading && (
-        <div className="flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-3 text-xs text-emerald-600 dark:text-emerald-400">
+        <div className="flex items-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-3 text-xs text-emerald-600 dark:text-emerald-400">
           <CheckCircle2 className="size-4 shrink-0" />
-          <span className="font-medium">
-            Successfully uploaded {successCount} {successCount === 1 ? 'file' : 'files'} to library.
+          <span className="font-semibold">
+            Successfully uploaded {successCount}{' '}
+            {successCount === 1 ? 'file' : 'files'} to library.
           </span>
         </div>
       )}
 
       {errors.length > 0 && (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive space-y-1.5">
+        <div className="space-y-2 rounded-xl border border-destructive/30 bg-destructive/10 p-3.5 text-xs text-destructive">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 font-semibold">
               <AlertCircle className="size-4 shrink-0" />
@@ -174,7 +179,7 @@ export function UploadDropzone({ onUploadSuccess }: UploadDropzoneProps) {
               Dismiss
             </Button>
           </div>
-          <ul className="list-disc pl-5 space-y-0.5 text-[11px]">
+          <ul className="list-disc space-y-0.5 pl-5 text-[11px]">
             {errors.map((err, i) => (
               <li key={i}>{err}</li>
             ))}

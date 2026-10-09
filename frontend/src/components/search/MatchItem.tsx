@@ -75,7 +75,9 @@ export function MatchItem({ match, index, onPlayTimestamp }: MatchItemProps) {
         </div>
 
         <div className="flex items-center gap-1.5 rounded-md border border-border/80 bg-muted/50 px-2.5 py-1">
-          <span className="text-[10px] font-semibold text-muted-foreground uppercase">Rank Score</span>
+          <span className="text-[10px] font-semibold text-muted-foreground uppercase">
+            Rank Score
+          </span>
           <span className="font-mono text-xs font-bold text-foreground">
             {formatScore(match.score)}
           </span>

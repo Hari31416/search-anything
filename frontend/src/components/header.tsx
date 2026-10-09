@@ -6,6 +6,10 @@ import {
   AlertTriangle,
   XCircle,
   RefreshCw,
+  Search,
+  Layers,
+  SlidersHorizontal,
+  Sparkles,
 } from 'lucide-react'
 import { useTheme } from '@/components/theme-provider'
 import { Button } from '@/components/ui/button'
@@ -49,24 +53,24 @@ export function Header({ activeTab, onSelectTab }: HeaderProps) {
   }
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-border bg-background/95 backdrop-blur-md">
+    <header className="sticky top-0 z-40 w-full border-b border-border/80 bg-background/80 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2.5">
-            <div className="flex size-9 items-center justify-center rounded-lg bg-primary font-bold text-primary-foreground shadow-xs">
-              SA
+          <div className="flex items-center gap-3">
+            <div className="flex size-9 items-center justify-center rounded-xl bg-gradient-to-tr from-primary to-violet-500 font-bold text-white shadow-md shadow-primary/20">
+              <Sparkles className="size-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-base font-bold tracking-tight text-foreground">
+                <span className="text-base font-extrabold tracking-tight text-foreground">
                   Search Anything
                 </span>
-                <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
-                  Local Multimodal
+                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                  Multimodal
                 </span>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Documents, images, audio, and video
+              <p className="hidden text-[11px] text-muted-foreground sm:block">
+                Visual, auditory & textual vector search
               </p>
             </div>
           </div>
@@ -78,35 +82,38 @@ export function Header({ activeTab, onSelectTab }: HeaderProps) {
             <button
               type="button"
               onClick={() => onSelectTab('search')}
-              className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+              className={`flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-all ${
                 activeTab === 'search'
-                  ? 'bg-secondary text-secondary-foreground shadow-2xs'
+                  ? 'bg-primary text-primary-foreground shadow-2xs'
                   : 'text-muted-foreground hover:bg-muted hover:text-foreground'
               }`}
             >
-              Search
+              <Search className="size-3.5" />
+              <span>Search</span>
             </button>
             <button
               type="button"
               onClick={() => onSelectTab('library')}
-              className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+              className={`flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-all ${
                 activeTab === 'library'
-                  ? 'bg-secondary text-secondary-foreground shadow-2xs'
+                  ? 'bg-primary text-primary-foreground shadow-2xs'
                   : 'text-muted-foreground hover:bg-muted hover:text-foreground'
               }`}
             >
-              Library
+              <Layers className="size-3.5" />
+              <span>Library</span>
             </button>
             <button
               type="button"
               onClick={() => onSelectTab('profiles')}
-              className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+              className={`flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-all ${
                 activeTab === 'profiles'
-                  ? 'bg-secondary text-secondary-foreground shadow-2xs'
+                  ? 'bg-primary text-primary-foreground shadow-2xs'
                   : 'text-muted-foreground hover:bg-muted hover:text-foreground'
               }`}
             >
-              Profiles
+              <SlidersHorizontal className="size-3.5" />
+              <span>Profiles</span>
             </button>
           </nav>
         </div>
@@ -116,7 +123,7 @@ export function Header({ activeTab, onSelectTab }: HeaderProps) {
             {health ? (
               <Badge
                 variant="success"
-                className="gap-1.5 text-[11px] font-normal"
+                className="gap-1.5 border-emerald-500/25 bg-emerald-500/15 text-[11px] font-medium text-emerald-600 dark:text-emerald-400"
               >
                 <CheckCircle2 className="size-3 text-emerald-500" />
                 <span className="hidden md:inline">Storage & DB Ready</span>
@@ -149,6 +156,7 @@ export function Header({ activeTab, onSelectTab }: HeaderProps) {
               disabled={checking}
               aria-label="Refresh backend status"
               title="Refresh backend status"
+              className="rounded-lg"
             >
               <RefreshCw
                 className={`size-3 text-muted-foreground ${checking ? 'animate-spin' : ''}`}
@@ -156,14 +164,15 @@ export function Header({ activeTab, onSelectTab }: HeaderProps) {
             </Button>
           </div>
 
-          <div className="h-4 w-px bg-border" />
+          <div className="h-4 w-px bg-border/80" />
 
           <Button
             variant="ghost"
             size="icon-sm"
             onClick={toggleTheme}
             aria-label="Toggle color theme"
-            title="Toggle theme (Press 'd')"
+            title="Toggle theme"
+            className="rounded-xl"
           >
             {theme === 'dark' ? (
               <Sun className="size-4 text-foreground" />
@@ -175,42 +184,45 @@ export function Header({ activeTab, onSelectTab }: HeaderProps) {
       </div>
 
       <div
-        className="flex border-t border-border px-4 py-1.5 sm:hidden"
+        className="flex border-t border-border px-4 py-2 sm:hidden"
         aria-label="Mobile Navigation"
       >
-        <div className="flex w-full justify-around">
+        <div className="flex w-full justify-around gap-1">
           <button
             type="button"
             onClick={() => onSelectTab('search')}
-            className={`flex-1 rounded-sm py-1 text-center text-xs font-medium ${
+            className={`flex flex-1 items-center justify-center gap-1 rounded-xl py-1.5 text-center text-xs font-semibold ${
               activeTab === 'search'
-                ? 'bg-secondary text-foreground'
+                ? 'bg-primary text-primary-foreground'
                 : 'text-muted-foreground'
             }`}
           >
-            Search
+            <Search className="size-3" />
+            <span>Search</span>
           </button>
           <button
             type="button"
             onClick={() => onSelectTab('library')}
-            className={`flex-1 rounded-sm py-1 text-center text-xs font-medium ${
+            className={`flex flex-1 items-center justify-center gap-1 rounded-xl py-1.5 text-center text-xs font-semibold ${
               activeTab === 'library'
-                ? 'bg-secondary text-foreground'
+                ? 'bg-primary text-primary-foreground'
                 : 'text-muted-foreground'
             }`}
           >
-            Library
+            <Layers className="size-3" />
+            <span>Library</span>
           </button>
           <button
             type="button"
             onClick={() => onSelectTab('profiles')}
-            className={`flex-1 rounded-sm py-1 text-center text-xs font-medium ${
+            className={`flex flex-1 items-center justify-center gap-1 rounded-xl py-1.5 text-center text-xs font-semibold ${
               activeTab === 'profiles'
-                ? 'bg-secondary text-foreground'
+                ? 'bg-primary text-primary-foreground'
                 : 'text-muted-foreground'
             }`}
           >
-            Profiles
+            <SlidersHorizontal className="size-3" />
+            <span>Profiles</span>
           </button>
         </div>
       </div>

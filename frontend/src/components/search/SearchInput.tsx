@@ -8,6 +8,7 @@ import {
   X,
   AlertTriangle,
   Loader2,
+  Sparkles,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { formatBytes, getMimeCategory } from '@/lib/formatters'
@@ -24,6 +25,14 @@ interface SearchInputProps {
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024
 const MAX_MEDIA_BYTES = 16 * 1024 * 1024
 
+const SUGGESTIONS = [
+  'Diagrams and schematics',
+  'Presentation slides',
+  'Podcast interview',
+  'Nature and landscape',
+  'Financial statements',
+]
+
 export function SearchInput({
   query,
   onChangeQuery,
@@ -34,13 +43,28 @@ export function SearchInput({
 }: SearchInputProps) {
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [fileWarning, setFileWarning] = React.useState<string | null>(null)
+  const [isDragOver, setIsDragOver] = React.useState(false)
+  const [imagePreviewUrl, setImagePreviewUrl] = React.useState<string | null>(
+    null
+  )
 
-  const handleFileSelect = (files: FileList | null) => {
-    if (!files || files.length === 0) return
-    const file = files[0]
+  // Generate thumbnail URL when image file is attached
+  React.useEffect(() => {
+    if (queryFile && getMimeCategory(queryFile.type) === 'image') {
+      const url = URL.createObjectURL(queryFile)
+      setImagePreviewUrl(url)
+      return () => {
+        URL.revokeObjectURL(url)
+      }
+    } else {
+      setImagePreviewUrl(null)
+    }
+  }, [queryFile])
+
+  const handleProcessFile = (file: File) => {
     setFileWarning(null)
-
     const category = getMimeCategory(file.type)
+
     if (category === 'image') {
       if (file.size > MAX_IMAGE_BYTES) {
         setFileWarning(
@@ -68,6 +92,11 @@ export function SearchInput({
     }
   }
 
+  const handleFileSelect = (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    handleProcessFile(files[0])
+  }
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault()
@@ -75,19 +104,40 @@ export function SearchInput({
     }
   }
 
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    setIsDragOver(false)
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleProcessFile(e.dataTransfer.files[0])
+    }
+  }
+
   const renderFileIcon = (file: File) => {
     const cat = getMimeCategory(file.type)
     if (cat === 'image')
-      return <ImageIcon className="size-3.5 text-emerald-500" />
-    if (cat === 'audio') return <Music className="size-3.5 text-violet-500" />
-    if (cat === 'video') return <Video className="size-3.5 text-amber-500" />
-    return <Paperclip className="size-3.5 text-muted-foreground" />
+      return <ImageIcon className="size-4 text-emerald-500" />
+    if (cat === 'audio') return <Music className="size-4 text-violet-500" />
+    if (cat === 'video') return <Video className="size-4 text-amber-500" />
+    return <Paperclip className="size-4 text-muted-foreground" />
   }
 
   return (
     <div className="space-y-3">
-      <div className="relative flex items-center rounded-xl border border-input bg-card shadow-xs transition-shadow focus-within:border-ring focus-within:ring-1 focus-within:ring-ring">
-        <div className="flex size-10 shrink-0 items-center justify-center pl-1 text-muted-foreground">
+      {/* Search Input Container with Drop Support */}
+      <div
+        onDragOver={(e) => {
+          e.preventDefault()
+          setIsDragOver(true)
+        }}
+        onDragLeave={() => setIsDragOver(false)}
+        onDrop={handleDrop}
+        className={`relative flex items-center rounded-2xl border bg-card shadow-sm transition-all duration-200 ${
+          isDragOver
+            ? 'border-primary bg-primary/5 ring-2 ring-primary/30'
+            : 'border-border/80 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 hover:border-primary/40'
+        }`}
+      >
+        <div className="flex size-12 shrink-0 items-center justify-center pl-2 text-muted-foreground">
           <Search className="size-5" />
         </div>
 
@@ -98,13 +148,13 @@ export function SearchInput({
           onKeyDown={handleKeyDown}
           placeholder={
             queryFile
-              ? 'Optional text to guide media query search (e.g. "blue bicycle")...'
-              : 'Search documents, images, audio, transcripts, OCR, keywords...'
+              ? 'Optional text to refine media query (e.g. "aerial view", "speech section")...'
+              : 'Search documents, images, audio, video by semantics, OCR, or text...'
           }
-          className="h-12 w-full bg-transparent px-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+          className="h-14 w-full bg-transparent px-2 text-sm text-foreground placeholder:text-muted-foreground/80 focus:outline-none"
         />
 
-        <div className="flex items-center gap-1.5 pr-2">
+        <div className="flex items-center gap-2 pr-3">
           {/* Query attachment trigger */}
           <input
             ref={fileInputRef}
@@ -117,12 +167,12 @@ export function SearchInput({
           <Button
             type="button"
             variant="ghost"
-            size="xs"
+            size="sm"
             onClick={() => fileInputRef.current?.click()}
-            title="Attach image or audio/video file for multimodal query"
-            className="gap-1 text-xs text-muted-foreground hover:text-foreground"
+            title="Attach image or audio/video for multimodal search"
+            className="h-9 gap-1.5 rounded-xl px-2.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
           >
-            <Paperclip className="size-3.5" />
+            <Paperclip className="size-4" />
             <span className="hidden sm:inline">Attach Media</span>
           </Button>
 
@@ -131,32 +181,47 @@ export function SearchInput({
             size="sm"
             onClick={onSearch}
             disabled={loading || (!query.trim() && !queryFile)}
-            className="h-8 gap-1.5 px-4"
+            className="h-9 gap-1.5 rounded-xl px-5 text-xs font-semibold shadow-xs"
           >
             {loading ? (
-              <Loader2 className="size-3.5 animate-spin" />
+              <Loader2 className="size-4 animate-spin" />
             ) : (
-              <Search className="size-3.5" />
+              <Search className="size-4" />
             )}
-            Search
+            <span>Search</span>
           </Button>
         </div>
       </div>
 
-      {/* Query File Badge */}
+      {/* Query File Rich Preview Card */}
       {queryFile && (
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
-          <div className="flex min-w-0 items-center gap-2">
-            {renderFileIcon(queryFile)}
-            <span className="truncate font-semibold text-foreground">
-              {queryFile.name}
-            </span>
-            <span className="text-muted-foreground">
-              ({formatBytes(queryFile.size)})
-            </span>
-            <span className="py-0.2 rounded bg-muted px-1.5 text-[10px] text-muted-foreground">
-              Query Attachment (Not stored in library)
-            </span>
+        <div className="flex animate-in items-center justify-between gap-3 rounded-xl border border-primary/25 bg-primary/5 p-3 text-xs shadow-xs duration-200 fade-in-50">
+          <div className="flex min-w-0 items-center gap-3">
+            {imagePreviewUrl ? (
+              <img
+                src={imagePreviewUrl}
+                alt="Query image"
+                className="size-12 rounded-lg border border-border object-cover shadow-2xs"
+              />
+            ) : (
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border/80 bg-background shadow-2xs">
+                {renderFileIcon(queryFile)}
+              </div>
+            )}
+
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="truncate font-semibold text-foreground">
+                  {queryFile.name}
+                </span>
+                <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                  Multimodal Query
+                </span>
+              </div>
+              <p className="font-mono text-[11px] text-muted-foreground">
+                {queryFile.type || 'media'} &bull; {formatBytes(queryFile.size)}
+              </p>
+            </div>
           </div>
 
           <Button
@@ -167,15 +232,37 @@ export function SearchInput({
               setFileWarning(null)
             }}
             title="Remove attachment"
+            className="rounded-lg hover:bg-destructive/10 hover:text-destructive"
           >
-            <X className="size-3.5" />
+            <X className="size-4" />
           </Button>
+        </div>
+      )}
+
+      {/* Search Suggestion Pills */}
+      {!query && !queryFile && (
+        <div className="flex flex-wrap items-center gap-1.5 pt-0.5 text-xs">
+          <span className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+            <Sparkles className="size-3 text-primary" /> Suggestions:
+          </span>
+          {SUGGESTIONS.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => {
+                onChangeQuery(s)
+              }}
+              className="rounded-full border border-border/70 bg-muted/40 px-2.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-primary/40 hover:bg-muted hover:text-foreground"
+            >
+              {s}
+            </button>
+          ))}
         </div>
       )}
 
       {/* Warning banner */}
       {fileWarning && (
-        <div className="flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-xs text-destructive">
+        <div className="flex animate-in items-center gap-2 rounded-xl border border-destructive/25 bg-destructive/10 p-3 text-xs text-destructive fade-in-50">
           <AlertTriangle className="size-4 shrink-0" />
           <span className="flex-1">{fileWarning}</span>
           <button

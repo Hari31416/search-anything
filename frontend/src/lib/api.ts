@@ -86,9 +86,7 @@ export const api = {
     return handleResponse<AssetStatus>(res)
   },
 
-  async retryAsset(
-    id: string
-  ): Promise<{
+  async retryAsset(id: string): Promise<{
     status: string
     asset_id: string
     generation_id: string

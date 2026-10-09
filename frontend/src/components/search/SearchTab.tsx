@@ -22,7 +22,7 @@ export function SearchTab() {
   const [mode, setMode] = React.useState<SearchMode>('hybrid')
   const [representationMode, setRepresentationMode] =
     React.useState<RepresentationMode>('separate')
-  const [limit, setLimit] = React.useState(10)
+  const [limit, setLimit] = React.useState(12)
   const [candidateLimit, setCandidateLimit] = React.useState(60)
   const [selectedTypes, setSelectedTypes] = React.useState<string[]>([])
   const [weights, setWeights] = React.useState<
@@ -135,14 +135,20 @@ export function SearchTab() {
   return (
     <div className="space-y-6">
       <div className="space-y-4">
-        <div>
-          <h2 className="text-xl font-bold tracking-tight text-foreground">
-            Multimodal Search
-          </h2>
-          <p className="text-xs text-muted-foreground">
-            Search cross-modal embeddings and full-text keywords across
-            documents, images, audio, and video.
-          </p>
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-xl font-bold tracking-tight text-foreground">
+              Multimodal Search
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Semantic vector discovery across images, videos, audio speech,
+              OCR, and documents.
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
+            <span className="inline-block size-2 animate-pulse rounded-full bg-emerald-500" />
+            <span>Dense Embeddings Active</span>
+          </div>
         </div>
 
         <SearchInput

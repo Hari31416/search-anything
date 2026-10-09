@@ -21,7 +21,7 @@ export function ProfileCard({ profile, onEdit }: ProfileCardProps) {
   const isAutomatic = profile.name === 'automatic'
 
   return (
-    <Card className="overflow-hidden transition-shadow hover:shadow-xs">
+    <Card className="overflow-hidden rounded-2xl border-border/80 transition-shadow hover:shadow-xs">
       <CardHeader className="bg-muted/30 pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">

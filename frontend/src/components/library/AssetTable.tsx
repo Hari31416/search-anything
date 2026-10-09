@@ -1,7 +1,6 @@
 import * as React from 'react'
 import {
   FileText,
-  Image as ImageIcon,
   Music,
   Video,
   FileQuestion,
@@ -32,6 +31,7 @@ import {
   formatDuration,
   getMimeCategory,
 } from '@/lib/formatters'
+import { api } from '@/lib/api'
 import type { Asset } from '@/types/api'
 
 interface AssetTableProps {
@@ -58,20 +58,52 @@ export function AssetTable({
   const [deleteTarget, setDeleteTarget] = React.useState<Asset | null>(null)
   const [activeMenuId, setActiveMenuId] = React.useState<string | null>(null)
 
-  const renderTypeIcon = (contentType: string) => {
-    const category = getMimeCategory(contentType)
-    switch (category) {
-      case 'document':
-        return <FileText className="size-4 text-sky-500" />
-      case 'image':
-        return <ImageIcon className="size-4 text-emerald-500" />
-      case 'audio':
-        return <Music className="size-4 text-violet-500" />
-      case 'video':
-        return <Video className="size-4 text-amber-500" />
-      default:
-        return <FileQuestion className="size-4 text-muted-foreground" />
+  const renderThumbnail = (asset: Asset) => {
+    const category = getMimeCategory(asset.content_type)
+    const contentUrl = api.getAssetContentUrl(asset.id)
+
+    if (category === 'image') {
+      return (
+        <div className="size-9 shrink-0 overflow-hidden rounded-lg border border-border/80 bg-muted/40 shadow-2xs">
+          <img
+            src={contentUrl}
+            alt={asset.filename}
+            loading="lazy"
+            className="h-full w-full object-cover"
+          />
+        </div>
+      )
     }
+
+    if (category === 'video') {
+      return (
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-amber-500/20 bg-amber-500/10 text-amber-500">
+          <Video className="size-4" />
+        </div>
+      )
+    }
+
+    if (category === 'audio') {
+      return (
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-violet-500/20 bg-violet-500/10 text-violet-500">
+          <Music className="size-4" />
+        </div>
+      )
+    }
+
+    if (category === 'document') {
+      return (
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-sky-500/20 bg-sky-500/10 text-sky-500">
+          <FileText className="size-4" />
+        </div>
+      )
+    }
+
+    return (
+      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+        <FileQuestion className="size-4" />
+      </div>
+    )
   }
 
   const renderStateBadge = (state: string) => {
@@ -116,7 +148,7 @@ export function AssetTable({
 
   if (loading && assets.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-xl border border-border bg-card p-12 text-center">
+      <div className="flex flex-col items-center justify-center rounded-2xl border border-border bg-card p-12 text-center">
         <Clock className="size-8 animate-spin text-muted-foreground" />
         <p className="mt-3 text-sm text-muted-foreground">
           Loading library assets...
@@ -127,14 +159,14 @@ export function AssetTable({
 
   if (assets.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card/50 p-12 text-center">
+      <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card/50 p-12 text-center">
         <FileQuestion className="size-10 text-muted-foreground/60" />
         <h4 className="mt-3 text-sm font-semibold text-foreground">
-          No assets in library yet
+          No assets match the filter
         </h4>
         <p className="mt-1 max-w-sm text-xs text-muted-foreground">
           Upload documents, images, audio, or video files above to start
-          indexing for multimodal search.
+          indexing.
         </p>
       </div>
     )
@@ -142,17 +174,17 @@ export function AssetTable({
 
   return (
     <>
-      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-2xs">
+      <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-xs">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="border-b border-border bg-muted/40 font-medium text-muted-foreground">
               <tr>
-                <th className="px-4 py-3">File</th>
-                <th className="px-3 py-3">Type</th>
-                <th className="px-3 py-3">Size / Length</th>
-                <th className="px-3 py-3">Status</th>
-                <th className="px-3 py-3">Created</th>
-                <th className="px-4 py-3 text-right">Actions</th>
+                <th className="px-4 py-3.5">Asset</th>
+                <th className="px-3 py-3.5">Format</th>
+                <th className="px-3 py-3.5">Size / Length</th>
+                <th className="px-3 py-3.5">Status</th>
+                <th className="px-3 py-3.5">Created</th>
+                <th className="px-4 py-3.5 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/60">
@@ -164,13 +196,12 @@ export function AssetTable({
                     className="transition-colors hover:bg-muted/30"
                   >
                     <td className="px-4 py-3 font-medium text-foreground">
-                      <div className="flex max-w-xs items-center gap-2.5 md:max-w-md">
-                        <div className="flex size-7 shrink-0 items-center justify-center rounded bg-muted">
-                          {renderTypeIcon(asset.content_type)}
-                        </div>
+                      <div className="flex max-w-xs items-center gap-3 md:max-w-md">
+                        {renderThumbnail(asset)}
                         <div className="min-w-0">
                           <p
-                            className="truncate font-semibold text-foreground"
+                            className="cursor-pointer truncate font-semibold text-foreground transition-colors hover:text-primary"
+                            onClick={() => onPreview(asset)}
                             title={asset.filename}
                           >
                             {asset.filename}
@@ -184,7 +215,7 @@ export function AssetTable({
 
                     <td className="px-3 py-3 text-muted-foreground">
                       <span
-                        className="inline-block max-w-[120px] truncate font-mono text-[11px]"
+                        className="inline-block max-w-[140px] truncate font-mono text-[11px]"
                         title={asset.content_type}
                       >
                         {asset.content_type}
@@ -194,7 +225,7 @@ export function AssetTable({
                     <td className="px-3 py-3 text-muted-foreground">
                       <div>{formatBytes(asset.byte_size)}</div>
                       {asset.duration_seconds !== null && (
-                        <div className="text-[10px] text-muted-foreground">
+                        <div className="font-mono text-[10px] text-muted-foreground">
                           {formatDuration(asset.duration_seconds)}
                         </div>
                       )}
@@ -255,7 +286,7 @@ export function AssetTable({
                           </Button>
 
                           {isMenuOpen && (
-                            <div className="absolute top-full right-0 z-30 mt-1 min-w-[140px] animate-in rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md fade-in-50 zoom-in-95">
+                            <div className="absolute top-full right-0 z-30 mt-1 min-w-[140px] animate-in rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-lg fade-in-50 zoom-in-95">
                               {asset.state === 'failed' && (
                                 <button
                                   type="button"
@@ -263,7 +294,7 @@ export function AssetTable({
                                     setActiveMenuId(null)
                                     onRetry(asset)
                                   }}
-                                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs text-foreground hover:bg-muted"
+                                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-foreground hover:bg-muted"
                                 >
                                   <RotateCcw className="size-3 text-amber-500" />
                                   Retry Failed
@@ -278,7 +309,7 @@ export function AssetTable({
                                     setActiveMenuId(null)
                                     onCancel(asset)
                                   }}
-                                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs text-foreground hover:bg-muted"
+                                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-foreground hover:bg-muted"
                                 >
                                   <Ban className="size-3 text-muted-foreground" />
                                   Cancel Processing
@@ -291,7 +322,7 @@ export function AssetTable({
                                   setActiveMenuId(null)
                                   setDeleteTarget(asset)
                                 }}
-                                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs text-destructive hover:bg-destructive/10"
+                                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-destructive hover:bg-destructive/10"
                               >
                                 <Trash2 className="size-3 text-destructive" />
                                 Delete Asset

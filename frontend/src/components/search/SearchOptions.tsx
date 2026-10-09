@@ -5,6 +5,11 @@ import {
   Info,
   ChevronDown,
   ChevronUp,
+  FileText,
+  Image as ImageIcon,
+  Music,
+  Video,
+  Layers,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
@@ -58,9 +63,25 @@ const DENSE_CHANNELS: DenseChannelName[] = [
 ]
 
 const CONTENT_TYPE_PRESETS = [
-  { label: 'All Types', types: [] },
+  { label: 'All Media', icon: Layers, types: [] },
+  {
+    label: 'Images',
+    icon: ImageIcon,
+    types: ['image/png', 'image/jpeg', 'image/webp', 'image/tiff'],
+  },
+  {
+    label: 'Video',
+    icon: Video,
+    types: ['video/mp4', 'video/quicktime', 'video/webm', 'video/x-matroska'],
+  },
+  {
+    label: 'Audio',
+    icon: Music,
+    types: ['audio/wav', 'audio/mpeg', 'audio/mp4', 'audio/ogg', 'audio/x-m4a'],
+  },
   {
     label: 'Documents',
+    icon: FileText,
     types: [
       'application/pdf',
       'text/plain',
@@ -69,18 +90,6 @@ const CONTENT_TYPE_PRESETS = [
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'text/x-python',
     ],
-  },
-  {
-    label: 'Images',
-    types: ['image/png', 'image/jpeg', 'image/webp', 'image/tiff'],
-  },
-  {
-    label: 'Audio',
-    types: ['audio/wav', 'audio/mpeg', 'audio/mp4', 'audio/ogg', 'audio/x-m4a'],
-  },
-  {
-    label: 'Video',
-    types: ['video/mp4', 'video/quicktime', 'video/webm', 'video/x-matroska'],
   },
 ]
 
@@ -136,23 +145,23 @@ export function SearchOptions({
   }
 
   return (
-    <div className="space-y-4 rounded-xl border border-border bg-card p-4 shadow-2xs">
+    <div className="space-y-4 rounded-2xl border border-border/80 bg-card/60 p-4 shadow-xs backdrop-blur-xs">
       {/* Primary retrieval controls */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         {/* Mode Selector */}
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-semibold text-muted-foreground uppercase">
+          <span className="text-[11px] font-bold tracking-wider text-muted-foreground uppercase">
             Mode:
           </span>
-          <div className="inline-flex rounded-md border border-border bg-muted/40 p-0.5">
+          <div className="inline-flex rounded-xl border border-border/80 bg-muted/40 p-1">
             {(['hybrid', 'semantic', 'keyword'] as SearchMode[]).map((m) => (
               <button
                 key={m}
                 type="button"
                 onClick={() => onChangeMode(m)}
-                className={`rounded px-2.5 py-1 text-xs font-medium capitalize transition-all ${
+                className={`rounded-lg px-3 py-1 text-xs font-semibold capitalize transition-all ${
                   mode === m
-                    ? 'bg-background text-foreground shadow-2xs'
+                    ? 'bg-background text-foreground shadow-xs'
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
@@ -164,19 +173,19 @@ export function SearchOptions({
 
         {/* Representation Mode */}
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-semibold text-muted-foreground uppercase">
+          <span className="text-[11px] font-bold tracking-wider text-muted-foreground uppercase">
             Vectors:
           </span>
-          <div className="inline-flex rounded-md border border-border bg-muted/40 p-0.5">
+          <div className="inline-flex rounded-xl border border-border/80 bg-muted/40 p-1">
             {(['separate', 'combined', 'both'] as RepresentationMode[]).map(
               (rm) => (
                 <button
                   key={rm}
                   type="button"
                   onClick={() => onChangeRepresentationMode(rm)}
-                  className={`rounded px-2.5 py-1 text-xs font-medium capitalize transition-all ${
+                  className={`rounded-lg px-3 py-1 text-xs font-semibold capitalize transition-all ${
                     representationMode === rm
-                      ? 'bg-background text-foreground shadow-2xs'
+                      ? 'bg-background text-foreground shadow-xs'
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >
@@ -192,10 +201,10 @@ export function SearchOptions({
           variant="outline"
           size="xs"
           onClick={() => setShowAdvanced((prev) => !prev)}
-          className="ml-auto gap-1.5 text-xs"
+          className="ml-auto gap-1.5 rounded-lg text-xs"
         >
           <SlidersHorizontal className="size-3" />
-          {showAdvanced ? 'Hide Advanced' : 'Weights & Filters'}
+          {showAdvanced ? 'Hide Weights' : 'Fine-Tune Weights'}
           {showAdvanced ? (
             <ChevronUp className="size-3" />
           ) : (
@@ -205,8 +214,8 @@ export function SearchOptions({
       </div>
 
       {representationMode === 'combined' && (
-        <div className="flex items-center gap-2 rounded-md border border-amber-500/20 bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-400">
-          <Info className="size-3.5 shrink-0" />
+        <div className="flex items-center gap-2 rounded-xl border border-amber-500/25 bg-amber-500/10 p-2.5 text-xs text-amber-700 dark:text-amber-400">
+          <Info className="size-4 shrink-0" />
           <span>
             Combined vectors require assets reprocessed with combined
             representations. Lexical search is disabled in this mode.
@@ -215,29 +224,34 @@ export function SearchOptions({
       )}
 
       {/* Content Type Quick Presets */}
-      <div className="flex flex-wrap items-center gap-1.5 border-t border-border/50 pt-1">
-        <span className="mr-1 text-xs font-semibold text-muted-foreground uppercase">
-          Types:
+      <div className="flex flex-wrap items-center gap-2 border-t border-border/50 pt-3">
+        <span className="mr-1 text-[11px] font-bold tracking-wider text-muted-foreground uppercase">
+          Media:
         </span>
-        {CONTENT_TYPE_PRESETS.map((preset) => (
-          <button
-            key={preset.label}
-            type="button"
-            onClick={() => onChangeSelectedTypes(preset.types)}
-            className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors ${
-              isPresetActive(preset.types)
-                ? 'bg-primary text-primary-foreground'
-                : 'border border-border bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
-            }`}
-          >
-            {preset.label}
-          </button>
-        ))}
+        {CONTENT_TYPE_PRESETS.map((preset) => {
+          const IconComponent = preset.icon
+          const active = isPresetActive(preset.types)
+          return (
+            <button
+              key={preset.label}
+              type="button"
+              onClick={() => onChangeSelectedTypes(preset.types)}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-all ${
+                active
+                  ? 'bg-primary text-primary-foreground shadow-2xs'
+                  : 'border border-border/80 bg-muted/30 text-muted-foreground hover:bg-muted hover:text-foreground'
+              }`}
+            >
+              <IconComponent className="size-3.5" />
+              <span>{preset.label}</span>
+            </button>
+          )
+        })}
       </div>
 
       {/* Advanced drawer: Limits, Weights, Cutoffs */}
       {showAdvanced && (
-        <div className="mt-4 animate-in space-y-5 rounded-lg border border-border/80 bg-muted/20 p-4 duration-200 fade-in-50">
+        <div className="mt-4 animate-in space-y-5 rounded-xl border border-border/80 bg-muted/20 p-4 duration-200 fade-in-50">
           {/* Limits */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
@@ -261,7 +275,7 @@ export function SearchOptions({
             <div className="space-y-1.5">
               <div className="flex justify-between text-xs">
                 <span className="font-medium text-foreground">
-                  Candidate Limit (RRF pool)
+                  Candidate Pool (RRF pool)
                 </span>
                 <span className="font-mono text-muted-foreground">
                   {candidateLimit}
@@ -279,10 +293,10 @@ export function SearchOptions({
           </div>
 
           {/* Channel Weights */}
-          <div className="space-y-3 border-t border-border/60 pt-2">
+          <div className="space-y-3 border-t border-border/60 pt-3">
             <div className="flex items-center justify-between">
               <div>
-                <h4 className="text-xs font-semibold text-foreground uppercase">
+                <h4 className="text-xs font-semibold tracking-wide text-foreground uppercase">
                   Channel Retrieval Weights (0.0 – 10.0)
                 </h4>
                 <p className="text-[11px] text-muted-foreground">
@@ -307,10 +321,10 @@ export function SearchOptions({
                 return (
                   <div
                     key={channel}
-                    className="space-y-1.5 rounded-md border border-border/70 bg-background p-2.5"
+                    className="space-y-1.5 rounded-lg border border-border/70 bg-card p-2.5 shadow-2xs"
                   >
                     <div className="flex justify-between text-[11px]">
-                      <span className="font-medium text-foreground capitalize">
+                      <span className="font-semibold text-foreground capitalize">
                         {channel}
                       </span>
                       <span className="font-mono text-muted-foreground">
@@ -333,14 +347,14 @@ export function SearchOptions({
           </div>
 
           {/* Dense Similarity Cutoffs */}
-          <div className="space-y-3 border-t border-border/60 pt-2">
+          <div className="space-y-3 border-t border-border/60 pt-3">
             <div>
-              <h4 className="text-xs font-semibold text-foreground uppercase">
+              <h4 className="text-xs font-semibold tracking-wide text-foreground uppercase">
                 Dense Similarity Cutoffs (-1.0 to 1.0)
               </h4>
               <p className="text-[11px] text-muted-foreground">
                 Optional minimum cosine similarity filter for dense
-                representations. Leave unset for standard rank fusion.
+                representations.
               </p>
             </div>
 
@@ -351,10 +365,10 @@ export function SearchOptions({
                 return (
                   <div
                     key={channel}
-                    className="space-y-1.5 rounded-md border border-border/70 bg-background p-2.5"
+                    className="space-y-1.5 rounded-lg border border-border/70 bg-card p-2.5 shadow-2xs"
                   >
                     <div className="flex justify-between text-[11px]">
-                      <span className="font-medium text-foreground capitalize">
+                      <span className="font-semibold text-foreground capitalize">
                         {channel}
                       </span>
                       <span className="font-mono text-muted-foreground">

@@ -21,13 +21,16 @@ export function App() {
           {activeTab === 'profiles' && <ProfilesTab />}
         </main>
 
-        <footer className="border-t border-border/60 py-4 text-center text-xs text-muted-foreground">
+        <footer className="border-t border-border/60 bg-background/50 py-5 text-center text-xs text-muted-foreground">
           <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-2 px-4 sm:flex-row">
-            <div>
-              Search Anything &bull; Local multimodal retrieval with
-              EmbeddingGemma, Whisper &amp; pgvector
+            <div className="flex items-center gap-2">
+              <span className="inline-block size-1.5 rounded-full bg-primary" />
+              <span>
+                Search Anything &bull; Local multimodal retrieval with
+                EmbeddingGemma, Whisper &amp; pgvector
+              </span>
             </div>
-            <div className="font-mono text-[11px]">
+            <div className="font-mono text-[11px] text-muted-foreground/80">
               API: 127.0.0.1:8000 &bull; Single-owner inference
             </div>
           </div>

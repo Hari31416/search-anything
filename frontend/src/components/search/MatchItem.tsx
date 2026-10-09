@@ -1,12 +1,5 @@
 import * as React from 'react'
-import {
-  Clock,
-  Play,
-  FileText,
-  ChevronDown,
-  ChevronRight,
-  Sparkles,
-} from 'lucide-react'
+import { Clock, Play, FileText, ChevronDown, ChevronRight } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { formatScore, formatTimeRange } from '@/lib/formatters'
 import type { SearchMatch, RepresentationHit } from '@/types/api'
@@ -43,14 +36,14 @@ export function MatchItem({ match, index, onPlayTimestamp }: MatchItemProps) {
           </Badge>
 
           {isTemporal ? (
-            <div className="flex items-center gap-1.5 rounded-full bg-violet-500/10 px-2.5 py-0.5 text-xs font-medium text-violet-600 dark:text-violet-400">
+            <div className="flex items-center gap-1.5 rounded-full bg-sky-500/10 px-2.5 py-0.5 text-xs font-medium text-sky-600 dark:text-sky-400">
               <Clock className="size-3" />
               <span>{formatTimeRange(match.time_start, match.time_end)}</span>
               {onPlayTimestamp && match.time_start !== null && (
                 <button
                   type="button"
                   onClick={() => onPlayTimestamp(match.time_start!)}
-                  className="ml-1 flex items-center gap-0.5 rounded px-1 text-[10px] font-semibold hover:bg-violet-500/20"
+                  className="ml-1 flex items-center gap-0.5 rounded px-1 text-[10px] font-semibold hover:bg-sky-500/20"
                   title="Play from this moment"
                 >
                   <Play className="size-2.5 fill-current" /> Play
@@ -103,7 +96,6 @@ export function MatchItem({ match, index, onPlayTimestamp }: MatchItemProps) {
             key={channel}
             className="inline-flex items-center gap-1 rounded bg-secondary px-2 py-0.5 font-medium text-secondary-foreground"
           >
-            <Sparkles className="size-2.5 text-primary" />
             <span className="capitalize">{channel}</span>
             <span className="font-mono text-[9px] text-muted-foreground">
               +{contrib.toFixed(3)}

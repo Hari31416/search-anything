@@ -144,7 +144,7 @@ export function UploadDropzone({ onUploadSuccess }: UploadDropzoneProps) {
               <Video className="size-3 text-amber-500" /> Videos
             </span>
             <span className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-muted/50 px-2.5 py-1 font-medium">
-              <Music className="size-3 text-violet-500" /> Audio
+              <Music className="size-3 text-sky-500" /> Audio
             </span>
             <span className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-muted/50 px-2.5 py-1 font-medium">
               <FileText className="size-3 text-sky-500" /> Documents

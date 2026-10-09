@@ -255,7 +255,7 @@ export function LibraryTab() {
           </div>
 
           <div className="flex items-center gap-3 rounded-2xl border border-border/70 bg-card p-3 shadow-2xs">
-            <div className="flex size-10 items-center justify-center rounded-xl bg-violet-500/10 text-violet-500">
+            <div className="flex size-10 items-center justify-center rounded-xl bg-sky-500/10 text-sky-500">
               <Music className="size-5" />
             </div>
             <div>

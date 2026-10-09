@@ -80,7 +80,7 @@ export function SourcePreviewModal({
       case 'video':
         return <Video className="size-4 text-amber-400" />
       case 'audio':
-        return <Music className="size-4 text-violet-400" />
+        return <Music className="size-4 text-sky-400" />
       default:
         return <FileText className="size-4 text-sky-400" />
     }
@@ -192,7 +192,7 @@ export function SourcePreviewModal({
             </div>
           ) : category === 'audio' ? (
             <div className="flex w-full flex-col items-center gap-6 py-10">
-              <div className="flex size-20 items-center justify-center rounded-3xl bg-violet-500/15 text-violet-500 shadow-lg ring-8 ring-violet-500/10">
+              <div className="flex size-20 items-center justify-center rounded-3xl bg-sky-500/15 text-sky-500 shadow-lg ring-8 ring-sky-500/10">
                 <Volume2 className="size-10" />
               </div>
 
@@ -205,7 +205,7 @@ export function SourcePreviewModal({
                   <span
                     key={i}
                     style={{ height: `${h * 0.45}px` }}
-                    className="w-1.5 rounded-full bg-violet-500/60 transition-all duration-300"
+                    className="w-1.5 rounded-full bg-sky-500/60 transition-all duration-300"
                   />
                 ))}
               </div>

@@ -175,8 +175,8 @@ export function AssetGrid({
                     </div>
                   </div>
                 ) : category === 'audio' ? (
-                  <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-violet-950/20 via-background to-violet-900/10 p-4 text-center">
-                    <div className="mb-2 flex size-11 items-center justify-center rounded-full bg-violet-500/15 text-violet-500">
+                  <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-sky-950/20 via-background to-sky-950/10 p-4 text-center">
+                    <div className="mb-2 flex size-11 items-center justify-center rounded-full bg-sky-500/15 text-sky-500">
                       <Music className="size-5" />
                     </div>
                     {/* Simulated Waveform Graphic */}
@@ -185,7 +185,7 @@ export function AssetGrid({
                         <span
                           key={i}
                           style={{ height: `${h * 0.22}px` }}
-                          className="w-1 rounded-full bg-violet-500/50 transition-colors group-hover:bg-violet-500"
+                          className="w-1 rounded-full bg-sky-500/50 transition-colors group-hover:bg-sky-500"
                         />
                       ))}
                     </div>

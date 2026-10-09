@@ -9,7 +9,6 @@ import {
   ChevronDown,
   ChevronUp,
   Download,
-  Sparkles,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { MatchItem } from '@/components/search/MatchItem'
@@ -39,7 +38,7 @@ export function SearchResultCard({
       case 'image':
         return <ImageIcon className="size-4 text-emerald-500" />
       case 'audio':
-        return <Music className="size-4 text-violet-500" />
+        return <Music className="size-4 text-sky-500" />
       case 'video':
         return <Video className="size-4 text-amber-500" />
       default:
@@ -102,7 +101,6 @@ export function SearchResultCard({
         <div className="flex items-center gap-2.5">
           {/* Prominent Fused Score Badge */}
           <div className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-1.5 shadow-2xs">
-            <Sparkles className="size-3.5 text-primary" />
             <div className="flex flex-col">
               <span className="text-[9px] leading-none font-bold tracking-wider text-muted-foreground uppercase">
                 Fused Score
@@ -185,9 +183,9 @@ export function SearchResultCard({
                 </video>
               </div>
             ) : category === 'audio' ? (
-              <div className="flex w-full flex-col items-center gap-3 bg-gradient-to-r from-violet-950/15 via-background to-violet-950/15 p-6">
+              <div className="flex w-full flex-col items-center gap-3 bg-gradient-to-r from-sky-950/15 via-background to-sky-950/15 p-6">
                 <div className="flex items-center gap-3">
-                  <div className="flex size-11 items-center justify-center rounded-full bg-violet-500/15 text-violet-500">
+                  <div className="flex size-11 items-center justify-center rounded-full bg-sky-500/15 text-sky-500">
                     <Music className="size-5" />
                   </div>
                   <div>

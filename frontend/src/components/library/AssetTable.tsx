@@ -85,7 +85,7 @@ export function AssetTable({
 
     if (category === 'audio') {
       return (
-        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-violet-500/20 bg-violet-500/10 text-violet-500">
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-sky-500/20 bg-sky-500/10 text-sky-500">
           <Music className="size-4" />
         </div>
       )

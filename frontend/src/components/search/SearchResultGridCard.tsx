@@ -8,7 +8,6 @@ import {
   Eye,
   Play,
   Clock,
-  Sparkles,
   Download,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -92,7 +91,7 @@ export function SearchResultGridCard({
       case 'video':
         return <Video className="size-3 text-amber-400" />
       case 'audio':
-        return <Music className="size-3 text-violet-400" />
+        return <Music className="size-3 text-sky-400" />
       case 'document':
         return <FileText className="size-3 text-sky-400" />
       default:
@@ -140,8 +139,8 @@ export function SearchResultGridCard({
             )}
           </div>
         ) : category === 'audio' ? (
-          <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-violet-950/20 via-background to-violet-900/10 p-4 text-center">
-            <div className="mb-2 flex size-12 items-center justify-center rounded-full bg-violet-500/15 text-violet-500 ring-4 ring-violet-500/10">
+          <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-sky-950/20 via-background to-sky-950/10 p-4 text-center">
+            <div className="mb-2 flex size-12 items-center justify-center rounded-full bg-sky-500/15 text-sky-500 ring-4 ring-sky-500/10">
               <Music className="size-6" />
             </div>
             {/* Animated Waveform Bars */}
@@ -150,7 +149,7 @@ export function SearchResultGridCard({
                 <span
                   key={i}
                   style={{ height: `${h * 0.25}px` }}
-                  className="w-1 rounded-full bg-violet-500/60 transition-all duration-300 group-hover:bg-violet-500"
+                  className="w-1 rounded-full bg-sky-500/60 transition-all duration-300 group-hover:bg-sky-500"
                 />
               ))}
             </div>
@@ -186,7 +185,6 @@ export function SearchResultGridCard({
 
         {/* Top Right Fused Score Floating Pill */}
         <div className="absolute top-2.5 right-2.5 flex items-center gap-1 rounded-md border border-white/20 bg-black/70 px-2 py-0.5 text-[11px] font-bold text-white shadow-xs backdrop-blur-md">
-          <Sparkles className="size-3 text-amber-400" />
           <span className="font-mono">{formatScore(result.score)}</span>
         </div>
 

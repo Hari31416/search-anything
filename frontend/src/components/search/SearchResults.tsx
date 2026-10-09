@@ -1,7 +1,7 @@
 import * as React from 'react'
 import {
   Search,
-  Sparkles,
+  Loader2,
   Info,
   Clock,
   Layers,
@@ -9,6 +9,8 @@ import {
   AlertCircle,
   LayoutGrid,
   List,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SearchResultCard } from '@/components/search/SearchResultCard'
@@ -32,12 +34,13 @@ export function SearchResults({
   onPreviewAsset,
 }: SearchResultsProps) {
   const [viewMode, setViewMode] = React.useState<'grid' | 'list'>('grid')
+  const [showQueryDetails, setShowQueryDetails] = React.useState(false)
 
   if (loading) {
     return (
       <div className="space-y-4">
         <div className="flex animate-pulse items-center gap-2 text-xs text-muted-foreground">
-          <Sparkles className="size-3.5 text-primary" />
+          <Loader2 className="size-3.5 animate-spin text-primary" />
           <span>Searching cross-modal embeddings and vector indexes...</span>
         </div>
 
@@ -77,7 +80,7 @@ export function SearchResults({
   if (!hasSearched || !response) {
     return (
       <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/80 bg-card/40 p-12 text-center">
-        <div className="flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-inner">
+        <div className="flex size-14 items-center justify-center rounded-2xl bg-muted/60 text-muted-foreground shadow-inner">
           <Search className="size-7" />
         </div>
         <h3 className="mt-4 text-base font-bold text-foreground">
@@ -93,75 +96,93 @@ export function SearchResults({
   }
 
   const results = response.results || []
+  const hasQueryDetails =
+    Boolean(response.transcript) ||
+    response.query_duration_seconds !== undefined ||
+    Boolean(response.pooled_modalities && response.pooled_modalities.length > 0)
 
   return (
-    <div className="space-y-6">
-      {/* Media Query Preparation Metadata Banner */}
-      {(response.transcript ||
-        response.query_duration_seconds !== undefined ||
-        response.pooled_modalities) && (
-        <div className="space-y-2 rounded-xl border border-primary/25 bg-primary/5 p-4 text-xs">
-          <div className="flex items-center gap-2 font-semibold text-primary">
-            <Info className="size-3.5" />
-            <span>Multimodal Query Analysis</span>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 text-muted-foreground sm:grid-cols-3">
-            {response.query_duration_seconds !== undefined && (
-              <div className="flex items-center gap-1.5">
-                <Clock className="size-3 text-primary" />
-                <span>
-                  Query Duration:{' '}
-                  <strong className="text-foreground">
-                    {formatDuration(response.query_duration_seconds)}
-                  </strong>
-                </span>
-              </div>
+    <div className="space-y-5">
+      {/* Hidden-by-default Query Analysis (transcript and file details) */}
+      {hasQueryDetails && (
+        <div>
+          <button
+            type="button"
+            onClick={() => setShowQueryDetails((prev) => !prev)}
+            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <Info className="size-3 text-muted-foreground" />
+            <span>
+              {showQueryDetails ? 'Hide' : 'View'} attached file query details &
+              transcription
+            </span>
+            {showQueryDetails ? (
+              <ChevronUp className="size-3" />
+            ) : (
+              <ChevronDown className="size-3" />
             )}
+          </button>
 
-            {response.query_window_count !== undefined && (
-              <div className="flex items-center gap-1.5">
-                <Layers className="size-3 text-primary" />
-                <span>
-                  Query Windows:{' '}
-                  <strong className="text-foreground">
-                    {response.query_window_count}
-                  </strong>
-                </span>
+          {showQueryDetails && (
+            <div className="mt-2.5 animate-in space-y-2 rounded-xl border border-border/80 bg-muted/20 p-4 text-xs duration-150 fade-in-50">
+              <div className="grid grid-cols-1 gap-3 text-muted-foreground sm:grid-cols-3">
+                {response.query_duration_seconds !== undefined && (
+                  <div className="flex items-center gap-1.5">
+                    <Clock className="size-3 text-muted-foreground" />
+                    <span>
+                      Duration:{' '}
+                      <strong className="text-foreground">
+                        {formatDuration(response.query_duration_seconds)}
+                      </strong>
+                    </span>
+                  </div>
+                )}
+
+                {response.query_window_count !== undefined && (
+                  <div className="flex items-center gap-1.5">
+                    <Layers className="size-3 text-muted-foreground" />
+                    <span>
+                      Windows:{' '}
+                      <strong className="text-foreground">
+                        {response.query_window_count}
+                      </strong>
+                    </span>
+                  </div>
+                )}
+
+                {response.pooled_modalities &&
+                  response.pooled_modalities.length > 0 && (
+                    <div>
+                      <span>Modalities: </span>
+                      <strong className="text-foreground capitalize">
+                        {response.pooled_modalities.join(', ')}
+                      </strong>
+                    </div>
+                  )}
               </div>
-            )}
 
-            {response.pooled_modalities &&
-              response.pooled_modalities.length > 0 && (
-                <div>
-                  <span>Modalities: </span>
-                  <strong className="text-foreground capitalize">
-                    {response.pooled_modalities.join(', ')}
-                  </strong>
+              {response.transcript && (
+                <div className="border-t border-border/50 pt-2">
+                  <span className="font-semibold text-foreground">
+                    Speech Transcript:{' '}
+                  </span>
+                  <span className="text-foreground/90 italic">
+                    &ldquo;{response.transcript}&rdquo;
+                  </span>
                 </div>
               )}
-          </div>
 
-          {response.transcript && (
-            <div className="border-t border-primary/10 pt-2">
-              <span className="font-semibold text-foreground">
-                Query Speech Transcript:{' '}
-              </span>
-              <span className="text-foreground/90 italic">
-                &ldquo;{response.transcript}&rdquo;
-              </span>
+              {response.covered_ranges_seconds &&
+                response.covered_ranges_seconds.length > 0 && (
+                  <div className="text-[11px] text-muted-foreground">
+                    Covered Time Ranges:{' '}
+                    {response.covered_ranges_seconds
+                      .map(([s, e]) => `${s.toFixed(1)}s–${e.toFixed(1)}s`)
+                      .join(', ')}
+                  </div>
+                )}
             </div>
           )}
-
-          {response.covered_ranges_seconds &&
-            response.covered_ranges_seconds.length > 0 && (
-              <div className="text-[11px] text-muted-foreground">
-                Covered Time Ranges:{' '}
-                {response.covered_ranges_seconds
-                  .map(([s, e]) => `${s.toFixed(1)}s–${e.toFixed(1)}s`)
-                  .join(', ')}
-              </div>
-            )}
         </div>
       )}
 

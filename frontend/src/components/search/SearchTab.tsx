@@ -18,7 +18,8 @@ export function SearchTab() {
   const [query, setQuery] = React.useState('')
   const [queryFile, setQueryFile] = React.useState<File | null>(null)
 
-  // Options
+  // Options & Settings
+  const [showSettings, setShowSettings] = React.useState(false)
   const [mode, setMode] = React.useState<SearchMode>('hybrid')
   const [representationMode, setRepresentationMode] =
     React.useState<RepresentationMode>('separate')
@@ -44,6 +45,13 @@ export function SearchTab() {
 
   // Abort controller ref to cancel obsolete queries
   const abortControllerRef = React.useRef<AbortController | null>(null)
+
+  const hasCustomSettings =
+    mode !== 'hybrid' ||
+    representationMode !== 'separate' ||
+    selectedTypes.length > 0 ||
+    Object.keys(weights).length > 0 ||
+    Object.keys(similarityCutoffs).length > 0
 
   const handleSearch = async () => {
     if (!query.trim() && !queryFile) return
@@ -133,24 +141,9 @@ export function SearchTab() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-4">
-        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-xl font-bold tracking-tight text-foreground">
-              Multimodal Search
-            </h2>
-            <p className="text-xs text-muted-foreground">
-              Semantic vector discovery across images, videos, audio speech,
-              OCR, and documents.
-            </p>
-          </div>
-          <div className="flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
-            <span className="inline-block size-2 animate-pulse rounded-full bg-emerald-500" />
-            <span>Dense Embeddings Active</span>
-          </div>
-        </div>
-
+    <div className="space-y-8">
+      {/* Centered, restrained search container */}
+      <div className="mx-auto w-full max-w-2xl space-y-3 pt-2 sm:pt-4">
         <SearchInput
           query={query}
           onChangeQuery={setQuery}
@@ -158,24 +151,31 @@ export function SearchTab() {
           onChangeQueryFile={setQueryFile}
           onSearch={handleSearch}
           loading={loading}
+          showSettings={showSettings}
+          onToggleSettings={() => setShowSettings((prev) => !prev)}
+          hasCustomSettings={hasCustomSettings}
         />
 
-        <SearchOptions
-          mode={mode}
-          onChangeMode={setMode}
-          representationMode={representationMode}
-          onChangeRepresentationMode={setRepresentationMode}
-          limit={limit}
-          onChangeLimit={setLimit}
-          candidateLimit={candidateLimit}
-          onChangeCandidateLimit={setCandidateLimit}
-          selectedTypes={selectedTypes}
-          onChangeSelectedTypes={setSelectedTypes}
-          weights={weights}
-          onChangeWeights={setWeights}
-          similarityCutoffs={similarityCutoffs}
-          onChangeSimilarityCutoffs={setSimilarityCutoffs}
-        />
+        {showSettings && (
+          <div className="animate-in duration-200 fade-in-50">
+            <SearchOptions
+              mode={mode}
+              onChangeMode={setMode}
+              representationMode={representationMode}
+              onChangeRepresentationMode={setRepresentationMode}
+              limit={limit}
+              onChangeLimit={setLimit}
+              candidateLimit={candidateLimit}
+              onChangeCandidateLimit={setCandidateLimit}
+              selectedTypes={selectedTypes}
+              onChangeSelectedTypes={setSelectedTypes}
+              weights={weights}
+              onChangeWeights={setWeights}
+              similarityCutoffs={similarityCutoffs}
+              onChangeSimilarityCutoffs={setSimilarityCutoffs}
+            />
+          </div>
+        )}
       </div>
 
       <SearchResults

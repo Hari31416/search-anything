@@ -51,7 +51,9 @@ async def test_live_upload_ranges_presigned_jobs_generation_and_cleanup(
     tmp_path: Path,
 ) -> None:
     settings = Settings(
-        default_workspace_id=uuid4(), default_workspace_name="Integration"
+        default_workspace_id=uuid4(),
+        default_workspace_name="Integration",
+        model_socket_path=Path("/tmp") / f"sa-{uuid4().hex[:8]}" / "model.sock",
     )
     engine = make_engine(settings)
     sessions = async_sessionmaker(engine, expire_on_commit=False)
@@ -503,6 +505,74 @@ async def test_live_upload_ranges_presigned_jobs_generation_and_cleanup(
                     ).extractor_versions
                     assert video_versions["audio_stream"] == "skipped:no_audio_stream"
                 assert worker._embedding_model is not None
+                query_server = await worker._start_query_server()
+                text_search = await client.post(
+                    "/api/search",
+                    json={"query": "fire truck", "mode": "hybrid", "limit": 10},
+                )
+                assert text_search.status_code == 200, text_search.text
+                text_results = text_search.json()["results"]
+                assert any(
+                    representation["kind"] == "ocr"
+                    and "fire" in (representation["text"] or "").casefold()
+                    for result in text_results
+                    for match in result["matches"]
+                    for representation in match["representations"]
+                )
+                filtered_search = await client.post(
+                    "/api/search",
+                    json={
+                        "query": "fire truck",
+                        "mode": "keyword",
+                        "content_types": ["image/png"],
+                        "asset_ids": [str(image_asset_id)],
+                    },
+                )
+                assert filtered_search.status_code == 200, filtered_search.text
+                assert [
+                    result["asset_id"] for result in filtered_search.json()["results"]
+                ] == [str(image_asset_id)]
+                channel_search = await client.post(
+                    "/api/search",
+                    json={
+                        "query": "fire truck",
+                        "mode": "semantic",
+                        "weights": {
+                            "text": 0,
+                            "transcript": 0,
+                            "ocr": 3,
+                            "image": 0,
+                            "audio": 0,
+                            "video": 0,
+                            "lexical": 0,
+                            "identifier": 0,
+                            "filename": 0,
+                        },
+                    },
+                )
+                assert channel_search.status_code == 200, channel_search.text
+                assert any(
+                    result["asset_id"] == str(image_asset_id)
+                    for result in channel_search.json()["results"]
+                )
+                assert all(
+                    set(match["channel_evidence"]) == {"ocr"}
+                    for result in channel_search.json()["results"]
+                    for match in result["matches"]
+                )
+                image_search = await client.post(
+                    "/api/search/image",
+                    files={"file": ("query.png", image_bytes.getvalue(), "image/png")},
+                )
+                assert image_search.status_code == 200, image_search.text
+                assert any(
+                    result["asset_id"] == str(image_asset_id)
+                    for result in image_search.json()["results"]
+                )
+                query_server.close()
+                await query_server.wait_closed()
+                settings.model_socket_path.unlink(missing_ok=True)
+                settings.model_socket_path.parent.rmdir()
                 with pytest.raises(ContextLimitError):
                     worker._embedding_model.embed_texts(["word " * 9000])
                 with pytest.raises(ContextLimitError, match="audio windows"):
@@ -685,6 +755,15 @@ async def test_live_upload_ranges_presigned_jobs_generation_and_cleanup(
                     assert await session.get(Asset, concurrent_asset_id) is None
                     assert await session.get(Asset, image_asset_id) is None
                     assert await session.get(Asset, unsupported_asset_id) is None
+                after_delete_search = await client.post(
+                    "/api/search",
+                    json={"query": "FIRE TRUCK", "mode": "keyword"},
+                )
+                assert after_delete_search.status_code == 200
+                assert all(
+                    result["asset_id"] != str(image_asset_id)
+                    for result in after_delete_search.json()["results"]
+                )
                 assert (await client.get(f"/api/assets/{asset_id}")).status_code == 404
                 assert (
                     await client.get(f"/api/assets/{concurrent_asset_id}")

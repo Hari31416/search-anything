@@ -67,6 +67,11 @@ class Asset(Base):
         ),
         Index("ix_assets_workspace_hash", "workspace_id", "content_hash"),
         Index("ix_assets_filename_normalized", text("lower(filename)")),
+        Index(
+            "ix_assets_filename_lexical",
+            text("to_tsvector('simple', coalesce(filename, ''))"),
+            postgresql_using="gin",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
@@ -171,7 +176,10 @@ class Representation(Base):
         Index("ix_representations_kind", "kind"),
         Index(
             "ix_representations_lexical",
-            text("to_tsvector('simple', coalesce(text_content, ''))"),
+            text(
+                "(setweight(to_tsvector('simple', coalesce(text_content, '')), 'B') "
+                "|| setweight(to_tsvector('simple', coalesce(metadata->>'heading', '')), 'A'))"
+            ),
             postgresql_using="gin",
         ),
     )

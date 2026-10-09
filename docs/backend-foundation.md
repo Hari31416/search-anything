@@ -4,7 +4,9 @@ Phase 1 provides the local API, persistence, object storage, and durable worker
 foundation. Phase 2 supports structural extraction and local indexing for the
 document and image formats in `docs/ingestion.md`, plus bounded audio/video
 transcription, frame OCR, and timed representations. Profile, status, retry,
-cancel, and reprocess APIs are available. Search is the next backend phase.
+cancel, and reprocess APIs are available. Phase 3 now includes hybrid text
+search and semantic image search; audio/video query uploads and the combined
+representation experiment remain to complete search.
 
 ## Run locally
 
@@ -35,6 +37,9 @@ send inference work through the worker's owner process.
 - `POST /api/assets/{id}/retry`, `/cancel`, and `/reprocess` manage processing.
   Reprocess accepts `{"profile_name": "automatic"}`. A new generation is
   indexed before it replaces the prior active generation.
+- `POST /api/search` performs exact dense, PostgreSQL full-text, and normalized
+  identifier retrieval with filters, per-channel weights, and optional dense
+  similarity cutoffs. `POST /api/search/image` accepts a local image query.
 - `GET /api/assets/{id}/content` streams the source and supports one HTTP byte
   range, including suffix and open-ended ranges.
 - `GET /api/assets/{id}/presigned` returns a short-lived local RustFS URL.
@@ -48,7 +53,11 @@ Supported initial text formats and image handling are described in
 The PostgreSQL job queue uses `FOR UPDATE SKIP LOCKED`, expiring leases, a new
 random fencing token for every claim, bounded retries, and cancellation checks.
 Generation activation verifies the lease and ownership in the same transaction
-as the asset update. Retrieval should only expose the active generation.
+as the asset update. Retrieval filters to the workspace's active generation.
+Search fuses aligned time/source spans before ranking assets, preserves distant
+matches as separate moments/passages, and includes contributing representation
+and channel evidence. Query embeddings run through the worker's private Unix
+socket so the API does not load a second local model.
 
 `SEARCH_INTEGRATION_TESTS=1 uv run pytest -q tests/test_infrastructure_live.py`
 runs the live PostgreSQL/RustFS acceptance test. The ordinary test suite skips

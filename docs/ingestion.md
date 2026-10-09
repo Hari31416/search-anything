@@ -20,8 +20,12 @@ Images create a visual representation and a separate OCR text representation.
 OCR text retains per-line bounding boxes and confidence values. Document text
 segments retain page, heading, table, or source-offset metadata. Each textual
 representation and image representation gets its own finite, normalized 768d
-vector. A GIN index over `to_tsvector('simple', text_content)` supplies lexical
-indexing for text and OCR; hybrid retrieval is part of phase 3.
+vector. A weighted GIN full-text index covers representation bodies and
+headings, with a separate filename GIN index and escaped normalized substring
+matching for identifiers. `/api/search` combines text, transcript, OCR, image,
+audio, and video dense channels with lexical and identifier channels.
+`/api/search/image` routes visual query embeddings through the worker's local
+model owner.
 
 Audio and video files are probed with local FFprobe. The worker splits media
 into overlapping windows and uses FFmpeg to decode mono 16 kHz audio and
@@ -57,7 +61,8 @@ gets an audio embedding and simply has no transcript segments. Video with no
 audio stream gets video/OCR representations and records the skipped audio
 stream state.
 
-The HTTP upload path still defaults to the `automatic` profile. Profile
-management, retry/cancel/reprocess endpoints, and profile editing remain phase
-2 work. Uploads whose container has no decodable audio or video stream fail
-explicitly rather than becoming searchable.
+The HTTP upload path defaults to the latest immutable `automatic` profile
+revision. Profile editing, retry/cancel/reprocess endpoints, and preservation
+of the previous active generation are implemented. Uploads whose container
+has no decodable audio or video stream fail explicitly rather than becoming
+searchable.

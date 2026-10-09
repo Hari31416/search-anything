@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import os
 import shutil
 import socket
+import stat
 import subprocess
 import tempfile
 from contextlib import suppress
@@ -98,13 +100,98 @@ class Worker:
 
     async def run(self) -> None:
         await self.scheduler.start()
-        logger.info("Worker %s started", self.worker_id)
+        query_server: asyncio.AbstractServer | None = None
         try:
+            query_server = await self._start_query_server()
+            logger.info("Worker %s started", self.worker_id)
             while True:
                 if not await self.run_once():
                     await asyncio.sleep(self.settings.job_poll_seconds)
         finally:
+            if query_server is not None:
+                query_server.close()
+                await query_server.wait_closed()
+                self.settings.model_socket_path.unlink(missing_ok=True)
             await self.scheduler.close()
+
+    async def _start_query_server(self) -> asyncio.AbstractServer:
+        path = self.settings.model_socket_path
+        try:
+            path.parent.mkdir(parents=True, mode=0o700)
+        except FileExistsError:
+            parent_stat = path.parent.stat()
+            if (
+                parent_stat.st_uid != os.getuid()
+                or stat.S_IMODE(parent_stat.st_mode) & 0o077
+            ):
+                raise RuntimeError(
+                    f"model socket directory must be user-owned and private: {path.parent}"
+                )
+        if path.exists():
+            if not stat.S_ISSOCK(path.stat().st_mode):
+                raise RuntimeError(f"model socket path is occupied: {path}")
+            try:
+                _, writer = await asyncio.open_unix_connection(str(path))
+            except (ConnectionRefusedError, FileNotFoundError):
+                path.unlink(missing_ok=True)
+            else:
+                writer.close()
+                await writer.wait_closed()
+                raise RuntimeError(f"another model owner is listening at {path}")
+        server = await asyncio.start_unix_server(
+            self._handle_query_connection,
+            path=str(path),
+            limit=12 * 1024 * 1024,
+        )
+        os.chmod(path, 0o600)
+        logger.info("Local query inference socket ready at %s", path)
+        return server
+
+    async def _handle_query_connection(
+        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
+        try:
+            line = await asyncio.wait_for(reader.readline(), timeout=60)
+            request = json.loads(line)
+            kind = request.get("kind")
+            if kind == "text":
+                vector = await self.scheduler.submit(
+                    self._embed_query_text, str(request.get("text", "")), kind="query"
+                )
+                response = {"vector": vector}
+            elif kind == "image":
+                raw = await asyncio.to_thread(
+                    base64.b64decode, request["content_base64"], validate=True
+                )
+                if len(raw) > 8 * 1024 * 1024:
+                    raise ValueError("query image exceeds the 8 MiB limit")
+                image = await asyncio.to_thread(self._decode_query_image, raw)
+                try:
+                    vector = await self.scheduler.submit(
+                        self._embed_image, image, kind="query"
+                    )
+                finally:
+                    image.close()
+                response = {"vector": vector}
+            else:
+                raise ValueError("unsupported local query input")
+        except Exception as error:
+            response = {
+                "error": type(error).__name__,
+                "message": str(error)[:512],
+            }
+        writer.write(json.dumps(response, separators=(",", ":")).encode() + b"\n")
+        with suppress(Exception):
+            await writer.drain()
+        writer.close()
+        with suppress(Exception):
+            await writer.wait_closed()
+
+    @staticmethod
+    def _decode_query_image(raw: bytes) -> Any:
+        from search_anything.ingestion import _open_image
+
+        return _open_image(raw)
 
     async def run_once(self) -> bool:
         job = await claim_job(
@@ -319,6 +406,9 @@ class Worker:
 
     def _embed_text_batch(self, texts: list[str]) -> list[list[float]]:
         return self._model().embed_texts(texts)
+
+    def _embed_query_text(self, text: str) -> list[float]:
+        return self._model().embed_query(text)
 
     def _embed_image(self, image: Any) -> list[float]:
         return self._model().embed_images([image])[0]

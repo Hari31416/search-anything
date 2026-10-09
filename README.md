@@ -62,6 +62,30 @@ previews, profiles, and extraction details are documented in
 [`docs/backend-foundation.md`](docs/backend-foundation.md) and
 [`docs/ingestion.md`](docs/ingestion.md).
 
+## Search
+
+Text search is hybrid by default. Results are grouped by asset, with separate
+passages or moments and channel evidence under each asset. Filters, channel
+weights, and optional dense similarity cutoffs apply at request time; changing
+them does not reindex content.
+
+```sh
+curl -X POST http://127.0.0.1:8000/api/search \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"fire truck","mode":"hybrid","limit":10,"candidate_limit":60}'
+
+curl -X POST http://127.0.0.1:8000/api/search \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"license plate","mode":"semantic","content_types":["video/mp4"],"weights":{"transcript":1,"video":2},"similarity_cutoffs":{"video":0.25}}'
+
+curl -F 'file=@reference.png' http://127.0.0.1:8000/api/search/image
+```
+
+Text and image query embeddings go through the worker's private, local Unix
+socket and its single model scheduler. `mode` can be `hybrid`, `semantic`, or
+`keyword`. Image queries use cross-modal semantic retrieval. Audio/video query
+uploads and the opt-in combined representation experiment are still pending.
+
 ## Validation
 
 Run formatting, lint, and unit checks with:
@@ -80,5 +104,6 @@ SEARCH_INTEGRATION_TESTS=1 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
   uv run pytest -q tests/test_infrastructure_live.py -s
 ```
 
-The current backend indexes and processes uploaded content. Search endpoints
-are not available until the next backend milestone; there is no frontend yet.
+The backend indexes and processes uploaded content and supports text/image
+search. Audio/video query inputs and the combined representation experiment
+remain in backend phase 3; there is no frontend yet.

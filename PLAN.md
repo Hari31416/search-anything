@@ -234,8 +234,14 @@ Use small local fixtures to check functional correctness, independent of the lat
   and sampling overrides, missing-audio handling, source timestamps, frame
   limits, immutable profiles, retry/cancel/reprocess, and generation state
   preservation are covered by live and deterministic checks.
-- Phase 3 underway. Search API and retrieval will use the worker's single-owner
-  inference scheduler over local IPC; no model copy will be loaded by the API.
+- Phase 3 underway. Hybrid text and semantic image queries use the worker's
+  single-owner inference scheduler over a private local IPC socket; the API
+  does not load another model. PostgreSQL full-text/filename search and exact
+  pgvector retrieval align source spans before weighted RRF and return one
+  result per asset with separate matching passages/moments and channel
+  evidence. Asset/type filters, request-time channel weights, and dense
+  cutoffs are implemented. Audio/video query uploads and the opt-in combined
+  representation experiment remain to complete this phase.
 
 ## Planning sources
 

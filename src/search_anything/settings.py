@@ -1,6 +1,7 @@
 """Application settings loaded from environment variables."""
 
 from functools import lru_cache
+import os
 from pathlib import Path
 from uuid import UUID
 
@@ -44,8 +45,14 @@ class Settings(BaseSettings):
     ocr_languages: str = "eng"
     whisper_checkpoint_path: Path = Path("~/.cache/whisper/tiny.pt").expanduser()
     whisper_model_name: str = "tiny"
+    model_socket_path: Path = Path(f"/tmp/search-anything-{os.getuid()}/model.sock")
 
-    @field_validator("embedding_model_path", "whisper_checkpoint_path", mode="before")
+    @field_validator(
+        "embedding_model_path",
+        "whisper_checkpoint_path",
+        "model_socket_path",
+        mode="before",
+    )
     @classmethod
     def expand_embedding_path(cls, value: str | Path) -> Path:
         return Path(value).expanduser()

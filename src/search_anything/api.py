@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
+import base64
 import hashlib
+import json
 import logging
+import math
 import re
 import tempfile
 from contextlib import asynccontextmanager
@@ -13,10 +17,19 @@ from urllib.parse import quote
 from uuid import UUID, uuid4
 
 import anyio
-from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+)
 from fastapi.responses import StreamingResponse
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -30,6 +43,7 @@ from search_anything.models import (
     Workspace,
 )
 from search_anything.ranges import UnsatisfiableRange, parse_range
+from search_anything.retrieval import DEFAULT_WEIGHTS, search_workspace
 from search_anything.settings import Settings, get_settings
 from search_anything.storage import S3ObjectStorage
 
@@ -123,6 +137,73 @@ class ReprocessRequest(BaseModel):
 
 class CancelRequest(BaseModel):
     generation_id: UUID | None = None
+
+
+class SearchRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=8192)
+    mode: str = Field(default="hybrid", pattern="^(hybrid|semantic|keyword)$")
+    limit: int = Field(default=10, ge=1, le=50)
+    candidate_limit: int = Field(default=60, ge=10, le=200)
+    content_types: list[str] | None = Field(default=None, max_length=32)
+    asset_ids: list[UUID] | None = Field(default=None, max_length=100)
+    weights: dict[str, float] | None = None
+    similarity_cutoffs: dict[str, float] | None = None
+
+    @field_validator("query")
+    @classmethod
+    def validate_query(cls, query: str) -> str:
+        clean = query.strip()
+        if not clean:
+            raise ValueError("search query cannot be empty")
+        return clean
+
+    @field_validator("weights")
+    @classmethod
+    def validate_weights(
+        cls, weights: dict[str, float] | None
+    ) -> dict[str, float] | None:
+        if weights is None:
+            return None
+        if set(weights) - set(DEFAULT_WEIGHTS):
+            raise ValueError("unknown search channel weight")
+        if any(
+            not math.isfinite(value) or not 0 <= value <= 10
+            for value in weights.values()
+        ):
+            raise ValueError(
+                "search channel weights must be finite and between 0 and 10"
+            )
+        return weights
+
+    @field_validator("similarity_cutoffs")
+    @classmethod
+    def validate_similarity_cutoffs(
+        cls, cutoffs: dict[str, float] | None
+    ) -> dict[str, float] | None:
+        if cutoffs is None:
+            return None
+        dense_channels = {"text", "transcript", "ocr", "image", "audio", "video"}
+        if set(cutoffs) - dense_channels:
+            raise ValueError(
+                "similarity cutoffs must use dense representation channels"
+            )
+        if any(
+            not math.isfinite(value) or not -1 <= value <= 1
+            for value in cutoffs.values()
+        ):
+            raise ValueError(
+                "cosine similarity cutoffs must be finite and between -1 and 1"
+            )
+        return cutoffs
+
+    @model_validator(mode="after")
+    def validate_limits_and_enabled_weights(self) -> "SearchRequest":
+        if self.candidate_limit < self.limit:
+            raise ValueError("candidate_limit must be at least limit")
+        resolved_weights = {**DEFAULT_WEIGHTS, **(self.weights or {})}
+        if not any(resolved_weights.values()):
+            raise ValueError("at least one search channel weight must be positive")
+        return self
 
 
 def _default_profile_config(settings: Settings) -> dict[str, Any]:
@@ -476,6 +557,101 @@ def create_app(
         for profile in rows:
             latest.setdefault(profile.name, profile)
         return [ProfileResponse.model_validate(profile) for profile in latest.values()]
+
+    async def local_embedding(payload: dict[str, Any]) -> list[float]:
+        socket_path = settings.model_socket_path
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_unix_connection(str(socket_path)), timeout=2
+            )
+        except (OSError, asyncio.TimeoutError) as error:
+            raise HTTPException(
+                status_code=503,
+                detail="local model owner is unavailable; start the worker",
+            ) from error
+        try:
+            writer.write(json.dumps(payload, separators=(",", ":")).encode() + b"\n")
+            await writer.drain()
+            response_line = await asyncio.wait_for(reader.readline(), timeout=120)
+        except asyncio.TimeoutError as error:
+            raise HTTPException(
+                status_code=504, detail="local query inference timed out"
+            ) from error
+        finally:
+            writer.close()
+            await writer.wait_closed()
+        try:
+            response = json.loads(response_line)
+        except (json.JSONDecodeError, UnicodeDecodeError) as error:
+            raise HTTPException(
+                status_code=503, detail="invalid worker response"
+            ) from error
+        if "error" in response:
+            status_code = (
+                422
+                if response["error"]
+                in {"ContextLimitError", "ValueError", "IngestionError"}
+                else 503
+            )
+            raise HTTPException(status_code=status_code, detail=response["message"])
+        return response["vector"]
+
+    @app.post("/api/search")
+    async def search(
+        body: SearchRequest, request: Request, session: Session
+    ) -> dict[str, Any]:
+        vector = (
+            await local_embedding({"kind": "text", "text": body.query})
+            if body.mode in {"hybrid", "semantic"}
+            else None
+        )
+        results = await search_workspace(
+            session,
+            request.app.state.settings.default_workspace_id,
+            query=body.query,
+            vector=vector,
+            mode=body.mode,
+            limit=body.limit,
+            candidate_limit=body.candidate_limit,
+            content_types=body.content_types,
+            asset_ids=body.asset_ids,
+            weights=body.weights,
+            similarity_cutoffs=body.similarity_cutoffs,
+        )
+        return {"query": body.query, "mode": body.mode, "results": results}
+
+    @app.post("/api/search/image")
+    async def search_image(
+        request: Request,
+        session: Session,
+        file: Annotated[UploadFile, File()],
+        limit: Annotated[int, Form(ge=1, le=50)] = 10,
+        candidate_limit: Annotated[int, Form(ge=10, le=200)] = 60,
+    ) -> dict[str, Any]:
+        if candidate_limit < limit:
+            raise HTTPException(
+                status_code=422, detail="candidate_limit must be at least limit"
+            )
+        content = await file.read(8 * 1024 * 1024 + 1)
+        await file.close()
+        if len(content) > 8 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="query image exceeds 8 MiB")
+        vector = await local_embedding(
+            {
+                "kind": "image",
+                "content_base64": base64.b64encode(content).decode("ascii"),
+            }
+        )
+        results = await search_workspace(
+            session,
+            request.app.state.settings.default_workspace_id,
+            query="",
+            vector=vector,
+            mode="semantic",
+            limit=limit,
+            candidate_limit=candidate_limit,
+        )
+        return {"mode": "semantic", "results": results}
 
     @app.put("/api/profiles/{profile_name}", response_model=ProfileResponse)
     async def save_profile(

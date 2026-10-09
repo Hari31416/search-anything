@@ -1,6 +1,6 @@
 # Search Anything build plan
 
-Status: implementation in progress. Phases 0–2 are complete; phase 3 is underway.
+Status: backend phases 0–3 complete. Stopped before phase 4 (frontend) at the user's request.
 
 Updated: 2026-10-09.
 

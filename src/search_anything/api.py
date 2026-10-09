@@ -7,8 +7,8 @@ import logging
 import re
 import tempfile
 from contextlib import asynccontextmanager
-from datetime import datetime
-from typing import Annotated, AsyncIterator
+from datetime import datetime, timezone
+from typing import Annotated, AsyncIterator, Any
 from urllib.parse import quote
 from uuid import UUID, uuid4
 
@@ -16,11 +16,12 @@ import anyio
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from search_anything.db import make_engine
+from search_anything.ingestion import IngestionOptions
 from search_anything.models import (
     Asset,
     IngestionJob,
@@ -67,6 +68,120 @@ class ReadinessResponse(BaseModel):
     storage: str
 
 
+class JobStatusResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    stage: str
+    status: str
+    attempts: int
+    max_attempts: int
+    progress: float
+    cancellation_requested: bool
+    error_code: str | None
+    error_message: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class GenerationStatusResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    state: str
+    profile_snapshot: dict[str, Any]
+    extractor_versions: dict[str, Any]
+    created_at: datetime
+    jobs: list[JobStatusResponse]
+
+
+class AssetStatusResponse(BaseModel):
+    asset_id: UUID
+    state: str
+    active_generation_id: UUID | None
+    current_generation_id: UUID | None
+    generations: list[GenerationStatusResponse]
+
+
+class ProfileResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    revision: int
+    config: dict[str, Any]
+    created_at: datetime
+
+
+class ProfileWriteRequest(BaseModel):
+    options: IngestionOptions
+
+
+class ReprocessRequest(BaseModel):
+    profile_name: str = Field(default="automatic", min_length=1, max_length=120)
+
+
+class CancelRequest(BaseModel):
+    generation_id: UUID | None = None
+
+
+def _default_profile_config(settings: Settings) -> dict[str, Any]:
+    return IngestionOptions(
+        text_chunk_tokens=settings.chunk_target_tokens,
+        text_overlap_tokens=settings.chunk_overlap_tokens,
+        ocr_languages=settings.ocr_languages,
+    ).model_dump(mode="json")
+
+
+async def _ensure_default_profile(
+    session: AsyncSession, settings: Settings
+) -> IngestionProfile:
+    workspace_id = settings.default_workspace_id
+    await session.execute(
+        pg_insert(Workspace)
+        .values(id=workspace_id, name=settings.default_workspace_name)
+        .on_conflict_do_nothing(index_elements=[Workspace.id])
+    )
+    profile = await session.scalar(
+        select(IngestionProfile)
+        .where(
+            IngestionProfile.workspace_id == workspace_id,
+            IngestionProfile.name == "automatic",
+        )
+        .order_by(IngestionProfile.revision.desc())
+        .limit(1)
+    )
+    if profile is None:
+        await session.execute(
+            pg_insert(IngestionProfile)
+            .values(
+                id=uuid4(),
+                workspace_id=workspace_id,
+                name="automatic",
+                revision=1,
+                config=_default_profile_config(settings),
+            )
+            .on_conflict_do_nothing(
+                index_elements=[
+                    IngestionProfile.workspace_id,
+                    IngestionProfile.name,
+                    IngestionProfile.revision,
+                ]
+            )
+        )
+        profile = await session.scalar(
+            select(IngestionProfile)
+            .where(
+                IngestionProfile.workspace_id == workspace_id,
+                IngestionProfile.name == "automatic",
+            )
+            .order_by(IngestionProfile.revision.desc())
+            .limit(1)
+        )
+    assert profile is not None
+    return profile
+
+
 def _safe_filename(filename: str | None) -> str:
     value = (filename or "upload").replace("\\", "/").split("/")[-1].strip()
     value = "".join(character for character in value if character.isprintable())
@@ -75,6 +190,25 @@ def _safe_filename(filename: str | None) -> str:
 
 def _normalized_filename(filename: str) -> str:
     return re.sub(r"\s+", " ", filename.strip()).casefold()
+
+
+_ACTIVE_DOCUMENT_TYPES = {
+    "application/xhtml+xml",
+    "image/svg+xml",
+    "text/html",
+    "text/javascript",
+    "application/javascript",
+    "application/xml",
+    "text/xml",
+}
+
+
+def _source_response_type(content_type: str) -> tuple[str, bool]:
+    """Keep uploaded active documents from executing on the API origin."""
+    normalized = content_type.split(";", 1)[0].strip().casefold()
+    if normalized in _ACTIVE_DOCUMENT_TYPES:
+        return "application/octet-stream", True
+    return content_type, False
 
 
 async def _session(request: Request) -> AsyncIterator[AsyncSession]:
@@ -170,61 +304,9 @@ def create_app(
                     object_key, body, content_type, content_hash
                 )
                 async with session.begin():
-                    workspace = await session.get(Workspace, workspace_id)
-                    if workspace is None:
-                        await session.execute(
-                            pg_insert(Workspace)
-                            .values(
-                                id=workspace_id,
-                                name=request.app.state.settings.default_workspace_name,
-                            )
-                            .on_conflict_do_nothing(index_elements=[Workspace.id])
-                        )
-                        workspace = await session.get(Workspace, workspace_id)
-                    profile = await session.scalar(
-                        select(IngestionProfile).where(
-                            IngestionProfile.workspace_id == workspace_id,
-                            IngestionProfile.name == "automatic",
-                            IngestionProfile.revision == 1,
-                        )
+                    profile = await _ensure_default_profile(
+                        session, request.app.state.settings
                     )
-                    if profile is None:
-                        await session.execute(
-                            pg_insert(IngestionProfile)
-                            .values(
-                                id=uuid4(),
-                                workspace_id=workspace_id,
-                                name="automatic",
-                                revision=1,
-                                config={
-                                    "strategy": "automatic",
-                                    "version": 1,
-                                    "media_preset": "automatic",
-                                    "media_window_seconds": None,
-                                    "media_overlap_seconds": None,
-                                    "video_sampling_fps": None,
-                                    "transcription_language": None,
-                                    "text_chunk_tokens": request.app.state.settings.chunk_target_tokens,
-                                    "text_overlap_tokens": request.app.state.settings.chunk_overlap_tokens,
-                                    "ocr_languages": request.app.state.settings.ocr_languages,
-                                },
-                            )
-                            .on_conflict_do_nothing(
-                                index_elements=[
-                                    IngestionProfile.workspace_id,
-                                    IngestionProfile.name,
-                                    IngestionProfile.revision,
-                                ]
-                            )
-                        )
-                        profile = await session.scalar(
-                            select(IngestionProfile).where(
-                                IngestionProfile.workspace_id == workspace_id,
-                                IngestionProfile.name == "automatic",
-                                IngestionProfile.revision == 1,
-                            )
-                        )
-                        assert profile is not None
                     asset = Asset(
                         id=asset_id,
                         workspace_id=workspace_id,
@@ -323,6 +405,121 @@ def create_app(
         )
         return AssetResponse.model_validate(asset)
 
+    @app.get("/api/assets/{asset_id}/status", response_model=AssetStatusResponse)
+    async def asset_status(
+        asset_id: UUID, request: Request, session: Session
+    ) -> AssetStatusResponse:
+        asset = await get_asset_or_404(
+            session, request.app.state.settings.default_workspace_id, asset_id
+        )
+        generations = (
+            await session.scalars(
+                select(ProcessingGeneration)
+                .where(ProcessingGeneration.asset_id == asset.id)
+                .order_by(ProcessingGeneration.created_at.desc())
+                .limit(20)
+            )
+        ).all()
+        generation_ids = [generation.id for generation in generations]
+        jobs = (
+            (
+                await session.scalars(
+                    select(IngestionJob)
+                    .where(IngestionJob.generation_id.in_(generation_ids))
+                    .order_by(IngestionJob.created_at)
+                )
+            ).all()
+            if generation_ids
+            else []
+        )
+        jobs_by_generation: dict[UUID, list[JobStatusResponse]] = {}
+        for job in jobs:
+            if job.generation_id is not None:
+                jobs_by_generation.setdefault(job.generation_id, []).append(
+                    JobStatusResponse.model_validate(job)
+                )
+        return AssetStatusResponse(
+            asset_id=asset.id,
+            state=asset.state,
+            active_generation_id=asset.active_generation_id,
+            current_generation_id=generations[0].id if generations else None,
+            generations=[
+                GenerationStatusResponse(
+                    id=generation.id,
+                    state=generation.state,
+                    profile_snapshot=generation.profile_snapshot,
+                    extractor_versions=generation.extractor_versions,
+                    created_at=generation.created_at,
+                    jobs=jobs_by_generation.get(generation.id, []),
+                )
+                for generation in generations
+            ],
+        )
+
+    @app.get("/api/profiles", response_model=list[ProfileResponse])
+    async def list_profiles(
+        request: Request, session: Session
+    ) -> list[ProfileResponse]:
+        async with session.begin():
+            await _ensure_default_profile(session, request.app.state.settings)
+        rows = (
+            await session.scalars(
+                select(IngestionProfile)
+                .where(
+                    IngestionProfile.workspace_id
+                    == request.app.state.settings.default_workspace_id
+                )
+                .order_by(IngestionProfile.name, IngestionProfile.revision.desc())
+            )
+        ).all()
+        latest: dict[str, IngestionProfile] = {}
+        for profile in rows:
+            latest.setdefault(profile.name, profile)
+        return [ProfileResponse.model_validate(profile) for profile in latest.values()]
+
+    @app.put("/api/profiles/{profile_name}", response_model=ProfileResponse)
+    async def save_profile(
+        profile_name: str,
+        body: ProfileWriteRequest,
+        request: Request,
+        session: Session,
+    ) -> ProfileResponse:
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,119}", profile_name):
+            raise HTTPException(status_code=422, detail="invalid profile name")
+        workspace_id = request.app.state.settings.default_workspace_id
+        async with session.begin():
+            await session.execute(
+                pg_insert(Workspace)
+                .values(
+                    id=workspace_id,
+                    name=request.app.state.settings.default_workspace_name,
+                )
+                .on_conflict_do_nothing(index_elements=[Workspace.id])
+            )
+            await session.scalar(
+                select(Workspace).where(Workspace.id == workspace_id).with_for_update()
+            )
+            previous = await session.scalar(
+                select(IngestionProfile)
+                .where(
+                    IngestionProfile.workspace_id == workspace_id,
+                    IngestionProfile.name == profile_name,
+                )
+                .order_by(IngestionProfile.revision.desc())
+                .limit(1)
+                .with_for_update()
+            )
+            profile = IngestionProfile(
+                id=uuid4(),
+                workspace_id=workspace_id,
+                name=profile_name,
+                revision=(previous.revision + 1) if previous else 1,
+                config=body.options.model_dump(mode="json"),
+            )
+            session.add(profile)
+            await session.flush()
+        return ProfileResponse.model_validate(profile)
+
     @app.get("/api/assets/{asset_id}/content")
     async def get_asset_content(
         asset_id: UUID,
@@ -358,10 +555,12 @@ def create_app(
             finally:
                 await anyio.to_thread.run_sync(stored.body.close)
 
+        response_type, attachment = _source_response_type(asset.content_type)
+        disposition = "attachment" if attachment else "inline"
         headers = {
             "Accept-Ranges": "bytes",
             "Content-Length": str(stored.content_length),
-            "Content-Disposition": f"inline; filename*=UTF-8''{quote(asset.filename)}",
+            "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(asset.filename)}",
             "X-Content-Type-Options": "nosniff",
         }
         if ranged:
@@ -371,7 +570,7 @@ def create_app(
         return StreamingResponse(
             chunks(),
             status_code=206 if ranged else 200,
-            media_type=asset.content_type,
+            media_type=response_type,
             headers=headers,
         )
 
@@ -388,12 +587,185 @@ def create_app(
             expires_in_seconds=request.app.state.settings.storage_presign_seconds,
         )
 
-    @app.delete("/api/assets/{asset_id}", status_code=202)
-    async def delete_asset(
+    @app.post("/api/assets/{asset_id}/retry", status_code=202)
+    async def retry_asset(
         asset_id: UUID, request: Request, session: Session
     ) -> dict[str, str | UUID]:
         workspace_id = request.app.state.settings.default_workspace_id
+        now = datetime.now(timezone.utc)
         async with session.begin():
+            asset = await session.scalar(
+                select(Asset)
+                .where(Asset.id == asset_id, Asset.workspace_id == workspace_id)
+                .with_for_update()
+            )
+            if asset is None or asset.state in {"deleting", "deleted"}:
+                raise HTTPException(status_code=404, detail="asset not found")
+            generation_id = await session.scalar(
+                select(ProcessingGeneration)
+                .where(ProcessingGeneration.asset_id == asset_id)
+                .order_by(ProcessingGeneration.created_at.desc())
+                .limit(1)
+            )
+            if generation_id is None:
+                raise HTTPException(status_code=404, detail="generation not found")
+            failed = await session.scalar(
+                select(IngestionJob)
+                .where(
+                    IngestionJob.asset_id == asset_id,
+                    IngestionJob.generation_id == generation_id.id,
+                    IngestionJob.stage != "cleanup",
+                    IngestionJob.status == "failed",
+                )
+                .order_by(IngestionJob.created_at.desc())
+                .limit(1)
+                .with_for_update()
+            )
+            if failed is None:
+                raise HTTPException(
+                    status_code=409, detail="current generation has no failed job"
+                )
+            generation = await session.scalar(
+                select(ProcessingGeneration)
+                .where(ProcessingGeneration.id == generation_id.id)
+                .with_for_update()
+            )
+            assert generation is not None
+            failed.status = "retry"
+            failed.attempts = 0
+            failed.max_attempts = request.app.state.settings.job_max_attempts
+            failed.progress = 0
+            failed.available_at = now
+            failed.cancellation_requested = False
+            failed.error_code = None
+            failed.error_message = None
+            failed.lease_owner = None
+            failed.lease_token = None
+            failed.lease_expires_at = None
+            generation.state = "queued"
+            asset.state = "ready" if asset.active_generation_id else "queued"
+        return {
+            "status": "retrying",
+            "asset_id": asset_id,
+            "generation_id": generation.id,
+            "job_id": failed.id,
+        }
+
+    @app.post("/api/assets/{asset_id}/cancel", status_code=202)
+    async def cancel_asset(
+        asset_id: UUID,
+        request: Request,
+        session: Session,
+        body: CancelRequest,
+    ) -> dict[str, str | UUID | int]:
+        workspace_id = request.app.state.settings.default_workspace_id
+        async with session.begin():
+            asset = await session.scalar(
+                select(Asset)
+                .where(Asset.id == asset_id, Asset.workspace_id == workspace_id)
+                .with_for_update()
+            )
+            if asset is None or asset.state in {"deleting", "deleted"}:
+                raise HTTPException(status_code=404, detail="asset not found")
+            if body.generation_id is None:
+                generation = await session.scalar(
+                    select(ProcessingGeneration)
+                    .where(ProcessingGeneration.asset_id == asset_id)
+                    .order_by(ProcessingGeneration.created_at.desc())
+                    .limit(1)
+                )
+                generation_id = generation.id if generation else None
+            else:
+                generation_id = body.generation_id
+            if generation_id is None:
+                raise HTTPException(status_code=404, detail="generation not found")
+            if asset.active_generation_id == generation_id:
+                raise HTTPException(
+                    status_code=409, detail="the active generation cannot be cancelled"
+                )
+            jobs = (
+                await session.scalars(
+                    select(IngestionJob)
+                    .where(
+                        IngestionJob.asset_id == asset_id,
+                        IngestionJob.generation_id == generation_id,
+                        IngestionJob.stage != "cleanup",
+                        IngestionJob.status.in_(("queued", "retry", "running")),
+                    )
+                    .with_for_update()
+                )
+            ).all()
+            generation = await session.scalar(
+                select(ProcessingGeneration)
+                .where(
+                    ProcessingGeneration.id == generation_id,
+                    ProcessingGeneration.asset_id == asset_id,
+                )
+                .with_for_update()
+            )
+            if generation is None:
+                raise HTTPException(status_code=404, detail="generation not found")
+            running = 0
+            for job in jobs:
+                if job.status == "running":
+                    job.cancellation_requested = True
+                    running += 1
+                else:
+                    job.status = "cancelled"
+            generation.state = "cancelled"
+            latest_generation_id = await session.scalar(
+                select(ProcessingGeneration.id)
+                .where(ProcessingGeneration.asset_id == asset_id)
+                .order_by(ProcessingGeneration.created_at.desc())
+                .limit(1)
+            )
+            if latest_generation_id == generation_id:
+                asset.state = "ready" if asset.active_generation_id else "cancelled"
+        return {
+            "status": "cancellation_requested" if running else "cancelled",
+            "asset_id": asset_id,
+            "generation_id": generation_id,
+            "running_jobs": running,
+        }
+
+    @app.post("/api/assets/{asset_id}/reprocess", status_code=202)
+    async def reprocess_asset(
+        asset_id: UUID,
+        body: ReprocessRequest,
+        request: Request,
+        session: Session,
+    ) -> dict[str, str | UUID | int]:
+        workspace_id = request.app.state.settings.default_workspace_id
+        generation_id = uuid4()
+        job_id = uuid4()
+        async with session.begin():
+            asset = await session.scalar(
+                select(Asset)
+                .where(Asset.id == asset_id, Asset.workspace_id == workspace_id)
+                .with_for_update()
+            )
+            if asset is None or asset.state in {"deleting", "deleted"}:
+                raise HTTPException(status_code=404, detail="asset not found")
+            if body.profile_name == "automatic":
+                await _ensure_default_profile(session, request.app.state.settings)
+            profile = await session.scalar(
+                select(IngestionProfile)
+                .where(
+                    IngestionProfile.workspace_id == workspace_id,
+                    IngestionProfile.name == body.profile_name,
+                )
+                .order_by(IngestionProfile.revision.desc())
+                .limit(1)
+                .with_for_update()
+            )
+            if profile is None:
+                raise HTTPException(status_code=404, detail="profile not found")
+            try:
+                options = IngestionOptions.model_validate(profile.config)
+            except ValueError as error:
+                raise HTTPException(
+                    status_code=422, detail="profile configuration is invalid"
+                ) from error
             jobs = (
                 await session.scalars(
                     select(IngestionJob)
@@ -405,6 +777,73 @@ def create_app(
                     .with_for_update()
                 )
             ).all()
+            old_generation_ids = {
+                job.generation_id for job in jobs if job.generation_id is not None
+            }
+            for job in jobs:
+                if job.status == "running":
+                    job.cancellation_requested = True
+                else:
+                    job.status = "cancelled"
+            old_generations = (
+                (
+                    await session.scalars(
+                        select(ProcessingGeneration)
+                        .where(ProcessingGeneration.id.in_(old_generation_ids))
+                        .with_for_update()
+                    )
+                ).all()
+                if old_generation_ids
+                else []
+            )
+            for old_generation in old_generations:
+                if old_generation.state != "active":
+                    old_generation.state = "cancelled"
+            generation = ProcessingGeneration(
+                id=generation_id,
+                asset_id=asset_id,
+                profile_snapshot={
+                    "profile_id": str(profile.id),
+                    "name": profile.name,
+                    "revision": profile.revision,
+                    **options.model_dump(mode="json"),
+                },
+                extractor_versions={},
+                state="queued",
+            )
+            session.add(generation)
+            await session.flush()
+            session.add(
+                IngestionJob(
+                    id=job_id,
+                    asset_id=asset_id,
+                    generation_id=generation_id,
+                    stage="probe",
+                    status="queued",
+                    priority=10,
+                    payload={
+                        "asset_id": str(asset_id),
+                        "generation_id": str(generation_id),
+                    },
+                    idempotency_key=f"generation:{generation_id}:probe",
+                    max_attempts=request.app.state.settings.job_max_attempts,
+                )
+            )
+            asset.state = "ready" if asset.active_generation_id else "queued"
+        return {
+            "status": "queued",
+            "asset_id": asset_id,
+            "generation_id": generation_id,
+            "job_id": job_id,
+            "profile_revision": profile.revision,
+        }
+
+    @app.delete("/api/assets/{asset_id}", status_code=202)
+    async def delete_asset(
+        asset_id: UUID, request: Request, session: Session
+    ) -> dict[str, str | UUID]:
+        workspace_id = request.app.state.settings.default_workspace_id
+        async with session.begin():
             asset = await session.scalar(
                 select(Asset)
                 .where(Asset.id == asset_id, Asset.workspace_id == workspace_id)
@@ -412,6 +851,17 @@ def create_app(
             )
             if asset is None:
                 raise HTTPException(status_code=404, detail="asset not found")
+            jobs = (
+                await session.scalars(
+                    select(IngestionJob)
+                    .where(
+                        IngestionJob.asset_id == asset_id,
+                        IngestionJob.stage != "cleanup",
+                        IngestionJob.status.in_(("queued", "retry", "running")),
+                    )
+                    .with_for_update()
+                )
+            ).all()
             if asset.state == "deleted":
                 return {"status": "deleted", "asset_id": asset_id}
             asset.state = "deleting"

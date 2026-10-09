@@ -105,6 +105,44 @@ async def test_live_upload_ranges_presigned_jobs_generation_and_cleanup(
                         )
                     )
                     assert profile_count == 1
+                initial_status = await client.get(f"/api/assets/{asset_id}/status")
+                assert initial_status.status_code == 200
+                initial_status_body = initial_status.json()
+                assert initial_status_body["current_generation_id"] == str(
+                    generation_id
+                )
+                assert (
+                    initial_status_body["generations"][0]["jobs"][0]["stage"] == "probe"
+                )
+                profiles = await client.get("/api/profiles")
+                assert profiles.status_code == 200
+                assert [
+                    (profile["name"], profile["revision"])
+                    for profile in profiles.json()
+                ] == [("automatic", 1)]
+                profile_options = {
+                    "strategy": "automatic",
+                    "version": 1,
+                    "media_preset": "general_video",
+                    "media_window_seconds": 12,
+                    "media_overlap_seconds": 2,
+                    "video_sampling_fps": 3,
+                    "transcription_language": "en",
+                    "text_chunk_tokens": 256,
+                    "text_overlap_tokens": 16,
+                    "ocr_languages": "eng",
+                }
+                saved_profile = await client.put(
+                    "/api/profiles/automatic", json={"options": profile_options}
+                )
+                assert saved_profile.status_code == 200, saved_profile.text
+                assert saved_profile.json()["revision"] == 2
+                profile_options["text_chunk_tokens"] = 512
+                latest_profile = await client.put(
+                    "/api/profiles/automatic", json={"options": profile_options}
+                )
+                assert latest_profile.status_code == 200, latest_profile.text
+                assert latest_profile.json()["revision"] == 3
 
                 full = await client.get(f"/api/assets/{asset_id}/content")
                 assert full.status_code == 200
@@ -495,49 +533,47 @@ async def test_live_upload_ranges_presigned_jobs_generation_and_cleanup(
                     )
                     assert chunk.text.endswith(".")
 
-                reprocessed_generation_id = uuid4()
-                async with sessions() as session:
-                    profile = await session.scalar(
-                        select(IngestionProfile).where(
-                            IngestionProfile.workspace_id
-                            == settings.default_workspace_id
-                        )
-                    )
-                    assert profile is not None
-                    session.add(
-                        ProcessingGeneration(
-                            id=reprocessed_generation_id,
-                            asset_id=asset_id,
-                            profile_snapshot={
-                                "profile_id": str(profile.id),
-                                "name": profile.name,
-                                "revision": profile.revision,
-                                **profile.config,
-                            },
-                            extractor_versions={},
-                            state="queued",
-                        )
-                    )
-                    await session.flush()
-                    session.add(
-                        IngestionJob(
-                            id=uuid4(),
-                            asset_id=asset_id,
-                            generation_id=reprocessed_generation_id,
-                            stage="probe",
-                            status="queued",
-                            priority=-20,
-                            payload={
-                                "asset_id": str(asset_id),
-                                "generation_id": str(reprocessed_generation_id),
-                            },
-                            idempotency_key=(
-                                f"generation:{reprocessed_generation_id}:probe"
-                            ),
-                            max_attempts=3,
-                        )
-                    )
-                    await session.commit()
+                cancelled_reprocess = await client.post(
+                    f"/api/assets/{asset_id}/reprocess",
+                    json={"profile_name": "automatic"},
+                )
+                assert cancelled_reprocess.status_code == 202
+                cancelled_generation_id = UUID(
+                    cancelled_reprocess.json()["generation_id"]
+                )
+                cancellation = await client.post(
+                    f"/api/assets/{asset_id}/cancel",
+                    json={"generation_id": str(cancelled_generation_id)},
+                )
+                assert cancellation.status_code == 202
+                status_after_cancel = await client.get(f"/api/assets/{asset_id}/status")
+                cancelled_status = status_after_cancel.json()
+                assert cancelled_status["active_generation_id"] == str(generation_id)
+                assert cancelled_status["state"] == "ready"
+                assert cancelled_status["generations"][0]["state"] == "cancelled"
+                assert (
+                    cancelled_status["generations"][0]["jobs"][0]["status"]
+                    == "cancelled"
+                )
+
+                reprocessed = await client.post(
+                    f"/api/assets/{asset_id}/reprocess",
+                    json={"profile_name": "automatic"},
+                )
+                assert reprocessed.status_code == 202, reprocessed.text
+                assert reprocessed.json()["profile_revision"] == 3
+                reprocessed_generation_id = UUID(reprocessed.json()["generation_id"])
+                stale_cancel = await client.post(
+                    f"/api/assets/{asset_id}/cancel",
+                    json={"generation_id": str(cancelled_generation_id)},
+                )
+                assert stale_cancel.status_code == 202
+                queued_status = await client.get(f"/api/assets/{asset_id}/status")
+                assert queued_status.json()["state"] == "ready"
+                assert queued_status.json()["current_generation_id"] == str(
+                    reprocessed_generation_id
+                )
+                assert queued_status.json()["generations"][0]["state"] == "queued"
                 assert await worker.run_once()
                 async with sessions() as session:
                     asset = await session.get(Asset, asset_id)
@@ -555,6 +591,75 @@ async def test_live_upload_ranges_presigned_jobs_generation_and_cleanup(
                     assert asset.active_generation_id == reprocessed_generation_id
                     assert previous is not None and previous.state == "superseded"
                     assert replacement is not None and replacement.state == "active"
+                    assert replacement.profile_snapshot["revision"] == 3
+                    assert replacement.profile_snapshot["text_chunk_tokens"] == 512
+
+                unsupported_response = await client.post(
+                    "/api/assets",
+                    files={
+                        "file": (
+                            "unsupported.csv",
+                            b"a,b\n1,2\n",
+                            "text/csv",
+                        )
+                    },
+                )
+                assert unsupported_response.status_code == 201
+                unsupported_result = unsupported_response.json()
+                unsupported_asset_id = UUID(unsupported_result["asset"]["id"])
+                unsupported_generation_id = UUID(unsupported_result["generation_id"])
+                assert await worker.run_once()  # probe queues the unsupported index
+                async with sessions() as session:
+                    unsupported_index = await session.scalar(
+                        select(IngestionJob).where(
+                            IngestionJob.generation_id == unsupported_generation_id,
+                            IngestionJob.stage == "index",
+                        )
+                    )
+                    assert unsupported_index is not None
+                    unsupported_index.max_attempts = 1
+                    snapshot_before_retry = (
+                        await session.get(
+                            ProcessingGeneration, unsupported_generation_id
+                        )
+                    ).profile_snapshot
+                    await session.commit()
+                assert await worker.run_once()  # extraction fails on this format
+                failed_status = await client.get(
+                    f"/api/assets/{unsupported_asset_id}/status"
+                )
+                assert failed_status.status_code == 200
+                failed_body = failed_status.json()
+                assert failed_body["state"] == "failed"
+                failed_generation = failed_body["generations"][0]
+                assert failed_generation["state"] == "failed"
+                failed_index = next(
+                    job for job in failed_generation["jobs"] if job["stage"] == "index"
+                )
+                assert failed_index["status"] == "failed"
+                assert failed_index["error_message"]
+                retried = await client.post(f"/api/assets/{unsupported_asset_id}/retry")
+                assert retried.status_code == 202, retried.text
+                retry_status = await client.get(
+                    f"/api/assets/{unsupported_asset_id}/status"
+                )
+                retried_generation = retry_status.json()["generations"][0]
+                assert retry_status.json()["state"] == "queued"
+                assert retried_generation["state"] == "queued"
+                retry_job = next(
+                    job for job in retried_generation["jobs"] if job["stage"] == "index"
+                )
+                assert retry_job["status"] == "retry"
+                async with sessions() as session:
+                    retry_generation = await session.get(
+                        ProcessingGeneration, unsupported_generation_id
+                    )
+                    assert retry_generation.profile_snapshot == snapshot_before_retry
+                cancelled_retry = await client.post(
+                    f"/api/assets/{unsupported_asset_id}/cancel",
+                    json={"generation_id": str(unsupported_generation_id)},
+                )
+                assert cancelled_retry.status_code == 202
 
                 deleted = await client.delete(f"/api/assets/{asset_id}")
                 assert deleted.status_code == 202
@@ -562,18 +667,24 @@ async def test_live_upload_ranges_presigned_jobs_generation_and_cleanup(
                     f"/api/assets/{concurrent_asset_id}"
                 )
                 image_deleted = await client.delete(f"/api/assets/{image_asset_id}")
+                unsupported_deleted = await client.delete(
+                    f"/api/assets/{unsupported_asset_id}"
+                )
                 assert concurrent_deleted.status_code == 202
                 assert image_deleted.status_code == 202
+                assert unsupported_deleted.status_code == 202
                 assert (
                     await client.get(f"/api/assets/{asset_id}/content")
                 ).status_code == 404
                 assert await worker.run_once()  # cleanup deletes storage and rows
                 assert await worker.run_once()
                 assert await worker.run_once()
+                assert await worker.run_once()
                 async with sessions() as session:
                     assert await session.get(Asset, asset_id) is None
                     assert await session.get(Asset, concurrent_asset_id) is None
                     assert await session.get(Asset, image_asset_id) is None
+                    assert await session.get(Asset, unsupported_asset_id) is None
                 assert (await client.get(f"/api/assets/{asset_id}")).status_code == 404
                 assert (
                     await client.get(f"/api/assets/{concurrent_asset_id}")

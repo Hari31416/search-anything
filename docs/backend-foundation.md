@@ -1,9 +1,10 @@
 # Backend foundation
 
 Phase 1 provides the local API, persistence, object storage, and durable worker
-foundation. Phase 2 has started: supported text and image uploads are extracted,
-segmented, OCR'd where appropriate, embedded locally, and published as an active
-generation. Audio and video processing is still being implemented.
+foundation. Phase 2 supports structural extraction and local indexing for the
+document and image formats in `docs/ingestion.md`, plus bounded audio/video
+transcription, frame OCR, and timed representations. Profile, status, retry,
+cancel, and reprocess APIs are available. Search is the next backend phase.
 
 ## Run locally
 
@@ -24,6 +25,16 @@ send inference work through the worker's owner process.
 - `POST /api/assets` stores an upload, creates a workspace-scoped asset and
   generation, and queues a probe followed by ingestion.
 - `GET /api/assets` and `GET /api/assets/{id}` report upload and probe state.
+- `GET /api/assets/{id}/status` reports current and active generations, job
+  attempts/progress/errors, and the immutable options snapshot used to process
+  each generation.
+- `GET /api/profiles` lists the latest revision of each ingestion profile.
+- `PUT /api/profiles/{name}` creates a new immutable profile revision. The
+  request body is `{"options": {"strategy": "automatic"}}`; supported tuning
+  options are validated by `IngestionOptions`.
+- `POST /api/assets/{id}/retry`, `/cancel`, and `/reprocess` manage processing.
+  Reprocess accepts `{"profile_name": "automatic"}`. A new generation is
+  indexed before it replaces the prior active generation.
 - `GET /api/assets/{id}/content` streams the source and supports one HTTP byte
   range, including suffix and open-ended ranges.
 - `GET /api/assets/{id}/presigned` returns a short-lived local RustFS URL.

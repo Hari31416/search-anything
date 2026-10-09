@@ -140,6 +140,8 @@ class Worker:
             else:
                 await complete_job(self.session_factory, job)
         except LeaseLost:
+            if await cancellation_requested(self.session_factory, job):
+                await self.cancel_claim(job)
             logger.info("Discarded stale result from job %s", job.id)
         except Exception as error:
             delay = min(60.0, 2.0 ** min(job.attempts - 1, 6))
@@ -173,7 +175,7 @@ class Worker:
                     IngestionJob.id == job.id,
                     IngestionJob.status == "running",
                     IngestionJob.lease_token == job.lease_token,
-                    IngestionJob.lease_expires_at > datetime.now(timezone.utc),
+                    IngestionJob.cancellation_requested.is_(True),
                 )
                 .values(
                     status="cancelled",
@@ -237,6 +239,9 @@ class Worker:
                 ffprobe_version = version_result.stdout.splitlines()[0].split()[2]
         async with self.session_factory() as session:
             async with session.begin():
+                current_asset = await session.scalar(
+                    select(Asset).where(Asset.id == job.asset_id).with_for_update()
+                )
                 current_job = await session.scalar(
                     select(IngestionJob)
                     .where(
@@ -248,8 +253,11 @@ class Worker:
                     )
                     .with_for_update()
                 )
-                current_asset = await session.get(Asset, job.asset_id)
-                generation = await session.get(ProcessingGeneration, job.generation_id)
+                generation = await session.scalar(
+                    select(ProcessingGeneration)
+                    .where(ProcessingGeneration.id == job.generation_id)
+                    .with_for_update()
+                )
                 if current_job is None or current_asset is None or generation is None:
                     raise LeaseLost(f"job {job.id} was reclaimed during probe")
                 if (
@@ -685,6 +693,9 @@ class Worker:
             image.close()
         async with self.session_factory() as session:
             async with session.begin():
+                current_asset = await session.scalar(
+                    select(Asset).where(Asset.id == job.asset_id).with_for_update()
+                )
                 current_job = await session.scalar(
                     select(IngestionJob)
                     .where(
@@ -695,9 +706,6 @@ class Worker:
                         IngestionJob.cancellation_requested.is_(False),
                     )
                     .with_for_update()
-                )
-                current_asset = await session.scalar(
-                    select(Asset).where(Asset.id == job.asset_id).with_for_update()
                 )
                 current_generation = await session.scalar(
                     select(ProcessingGeneration)

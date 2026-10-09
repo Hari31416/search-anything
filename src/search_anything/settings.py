@@ -8,6 +8,8 @@ from uuid import UUID
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from search_anything.devices import InferenceDevice
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -40,11 +42,13 @@ class Settings(BaseSettings):
     embedding_model_revision: str = "914f7f89142e33e77833254d9c9b90c3cef7303b"
     embedding_context_tokens: int = Field(default=8192, ge=256, le=8192)
     embedding_batch_size: int = Field(default=8, ge=1, le=32)
+    embedding_device: InferenceDevice = "auto"
     chunk_target_tokens: int = Field(default=700, ge=64, le=4096)
     chunk_overlap_tokens: int = Field(default=80, ge=0, le=512)
     ocr_languages: str = "eng"
     whisper_checkpoint_path: Path = Path("~/.cache/whisper/tiny.pt").expanduser()
     whisper_model_name: str = "tiny"
+    whisper_device: InferenceDevice = "auto"
     model_socket_path: Path = Path(f"/tmp/search-anything-{os.getuid()}/model.sock")
 
     @field_validator(

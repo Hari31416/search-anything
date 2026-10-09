@@ -593,6 +593,7 @@ class Worker:
                 self.settings.embedding_model_revision,
                 self.settings.embedding_context_tokens,
                 self.settings.embedding_batch_size,
+                device=self.settings.embedding_device,
             )
         return self._embedding_model
 
@@ -663,7 +664,10 @@ class Worker:
 
     def _transcribe(self, path: Path, language: str | None) -> dict[str, Any]:
         if self._whisper_model is None:
-            self._whisper_model = load_whisper(self.settings.whisper_checkpoint_path)
+            self._whisper_model = load_whisper(
+                self.settings.whisper_checkpoint_path,
+                device=self.settings.whisper_device,
+            )
         return transcribe_window(self._whisper_model, path, language)
 
     async def _copy_object_to_path(self, key: str, destination: Path) -> None:

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from search_anything.embeddings import MAX_AUDIO_SECONDS
+from search_anything.devices import InferenceDevice, resolve_device
 
 WHISPER_MODEL_SHA256 = (
     "65147644a518d12f04e32d6f3b26facc3f8dd46e5390956a9424a650c0ce22b9"
@@ -322,11 +323,32 @@ def verify_whisper_checkpoint(path: Path) -> None:
         )
 
 
-def load_whisper(path: Path) -> Any:
+def _whisper_dtw_cpu(matrix: Any) -> Any:
+    """Whisper's timing alignment needs float64, which MPS cannot represent."""
+    from whisper.timing import dtw_cpu
+
+    return dtw_cpu(matrix.cpu().double().numpy())
+
+
+def load_whisper(path: Path, device: InferenceDevice = "auto") -> Any:
     verify_whisper_checkpoint(path)
     import whisper
 
-    return whisper.load_model(str(path), device="cpu")
+    selected = resolve_device(device)
+    model = whisper.load_model(str(path), device="cpu")
+    if selected == "mps":
+        # Whisper's word timing code reads sparse indices. Keep that tiny mask
+        # on CPU while transferring the actual inference weights to MPS.
+        alignment_heads = model.alignment_heads
+        model.register_buffer(
+            "alignment_heads", model.alignment_heads.to_dense(), persistent=False
+        )
+        model.to(selected)
+        model.register_buffer("alignment_heads", alignment_heads, persistent=False)
+        # Upstream converts to float64 before transferring to CPU. Transfer
+        # first so word timestamps remain available with GPU inference.
+        whisper.timing.dtw = _whisper_dtw_cpu
+    return model
 
 
 def transcribe_window(

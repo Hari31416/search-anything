@@ -199,20 +199,16 @@ def main() -> None:
 
         whisper_result: dict[str, Any] | None = None
         if args.whisper_checkpoint:
-            import whisper
+            from search_anything.media import load_whisper, transcribe_window
 
             started = time.perf_counter()
-            speech_model = whisper.load_model(
-                str(args.whisper_checkpoint), device="cpu"
-            )
+            speech_model = load_whisper(args.whisper_checkpoint)
             whisper_load_seconds = time.perf_counter() - started
             started = time.perf_counter()
-            transcription = speech_model.transcribe(
-                str(audio_path), fp16=False, language="en"
-            )
+            transcription = transcribe_window(speech_model, audio_path, "en")
             whisper_result = {
                 "model": args.whisper_model,
-                "device": "cpu",
+                "device": str(speech_model.device),
                 "load_seconds": round(whisper_load_seconds, 3),
                 "transcribe_seconds": round(time.perf_counter() - started, 3),
                 "text": transcription["text"].strip(),

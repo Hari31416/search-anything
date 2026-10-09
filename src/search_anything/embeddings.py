@@ -9,6 +9,8 @@ from typing import Any, Sequence
 
 import numpy as np
 
+from search_anything.devices import InferenceDevice, resolve_device
+
 MODEL_ID = "google/embeddinggemma-2"
 MODEL_REVISION = "914f7f89142e33e77833254d9c9b90c3cef7303b"
 DIMENSIONS = 768
@@ -40,7 +42,7 @@ def audio_window_duration(audio_path: Path) -> float:
 
 
 class LocalEmbeddingModel:
-    """Own one CPU float32 model and use its tokenizer/processor for validation."""
+    """Own one local float32 model and validate its processor budget."""
 
     def __init__(
         self,
@@ -48,6 +50,7 @@ class LocalEmbeddingModel:
         revision: str = MODEL_REVISION,
         context_tokens: int = 8192,
         batch_size: int = 8,
+        device: InferenceDevice = "auto",
     ) -> None:
         if revision != MODEL_REVISION:
             raise EmbeddingError(f"unsupported embedding revision: {revision}")
@@ -64,9 +67,10 @@ class LocalEmbeddingModel:
 
         self.context_tokens = context_tokens
         self.batch_size = batch_size
+        self.device = resolve_device(device)
         self.model = SentenceTransformer(
             str(model_path),
-            device="cpu",
+            device=self.device,
             model_kwargs={"torch_dtype": torch.float32},
             local_files_only=True,
         )

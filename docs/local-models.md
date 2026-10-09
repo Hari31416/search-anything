@@ -1,15 +1,26 @@
 # Local model compatibility
 
 The reference machine is a MacBook Pro with an M4 Pro, 12 CPU cores, and 24 GB
-of memory. PyTorch 2.14.1 reported MPS unavailable in the final project venv,
-so the verified configuration uses CPU and float32. The model card prohibits
-float16. No application data is sent to a hosted inference service.
+of memory. Inference defaults to Apple Metal via PyTorch MPS when available,
+with CPU as the automatic fallback. Both models retain float32. The embedding
+model card prohibits float16. No application data is sent to a hosted inference
+service.
+
+Set `SEARCH_EMBEDDING_DEVICE` and `SEARCH_WHISPER_DEVICE` to `auto` (default),
+`mps`, or `cpu`. Explicit `mps` fails if the GPU is unavailable. Device selection
+is logged when each model loads. Restart the worker after changing settings.
+The macOS execution sandbox hides MPS on this machine; a normal host process
+can access it. The earlier CPU-only check was run inside that sandbox.
+
+Whisper keeps its sparse alignment-head mask and dynamic time warping on CPU
+because MPS does not support sparse tensors or float64. Neural inference runs
+on MPS, and word timestamps remain enabled.
 
 ## Pinned models and runtime
 
 - Embeddings: `google/embeddinggemma-2`, repository revision
   `914f7f89142e33e77833254d9c9b90c3cef7303b`, 768 dimensions.
-- Speech: OpenAI Whisper `tiny`, run locally on CPU with `fp16=False`.
+- Speech: OpenAI Whisper `tiny`, run locally with `fp16=False`.
 - Whisper tiny checkpoint SHA-256:
   `65147644a518d12f04e32d6f3b26facc3f8dd46e5390956a9424a650c0ce22b9`.
 - OCR: Tesseract 5.5.1 with the local `eng` language data.
@@ -21,7 +32,18 @@ model once with Hugging Face tooling if it is not already in the local cache.
 Run the smoke script with `HF_HUB_OFFLINE=1` after that download. Pass a local
 Whisper checkpoint path to avoid Whisper's download-on-first-use behavior.
 
-## Verification on the reference Mac
+## GPU verification on the reference Mac
+
+An unsandboxed run on 2026-10-09 verified the application's MPS embedding
+adapter for text, a downloaded Apollo image, 13 seconds of Apollo audio, and
+two video frames. All outputs passed the adapter's 768-dimension, finite-value,
+and normalization checks. Calls took 0.19, 0.44, 1.13, and 0.48 seconds
+respectively after loading. These are individual checks, not throughput
+benchmarks. Whisper tiny transcribed the audio on MPS in 0.92 seconds and
+returned 22 word timestamps with CPU alignment. Transcript accuracy was not
+evaluated.
+
+## Earlier CPU verification on the reference Mac
 
 The project venv produced finite, L2-normalized 768d embeddings for text,
 images, two-second 16 kHz audio, video frames, text plus image, and one combined

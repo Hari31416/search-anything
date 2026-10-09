@@ -1,6 +1,6 @@
 # Search Anything build plan
 
-Status: proposed plan only. No application implementation has started.
+Status: implementation in progress. Phase 0 is complete; phase 1 is underway.
 
 Updated: 2026-10-09.
 
@@ -212,6 +212,17 @@ Use small local fixtures to check functional correctness, independent of the lat
 - Phase 5: evaluation dataset composition, channel calibration and relevance cutoffs.
 - Phase 6: reranker models and whether the quality gain justifies multimodal inference cost locally.
 - Future deployment: multi-user authentication, external access and remote GPU execution if requested.
+
+## Implementation progress
+
+- Phase 0 complete. On the M4 Pro, the pinned EmbeddingGemma checkpoint returned
+  finite, normalized 768-dimensional vectors for text, image, audio, video,
+  text/image, and combined inputs. CPU float32 is the verified fallback. Local
+  Whisper tiny inference and Tesseract OCR ran against fixtures. Measurements
+  and limitations are in `docs/local-models.md`.
+- Phase 1 in progress. The uv environment and lockfile are committed. Next work
+  is PostgreSQL/RustFS composition, persistence, storage, durable jobs, and the
+  local inference scheduler.
 
 ## Planning sources
 

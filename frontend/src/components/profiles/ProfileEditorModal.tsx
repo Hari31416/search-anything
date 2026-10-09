@@ -11,7 +11,8 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
-import { api, ApiError } from '@/lib/api'
+import { ApiError } from '@/lib/api'
+import { useWorkspaceApi } from '@/lib/workspaces'
 import type { IngestionOptions, MediaPreset, Profile } from '@/types/api'
 
 interface ProfileEditorModalProps {
@@ -40,6 +41,7 @@ export function ProfileEditorModal({
   onOpenChange,
   onSuccess,
 }: ProfileEditorModalProps) {
+  const api = useWorkspaceApi()
   const [name, setName] = React.useState('custom_profile')
   const [mediaPreset, setMediaPreset] = React.useState<MediaPreset>('automatic')
   const [textChunkTokens, setTextChunkTokens] = React.useState(700)

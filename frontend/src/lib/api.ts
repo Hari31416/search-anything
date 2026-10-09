@@ -7,6 +7,7 @@ import type {
   SearchRequest,
   SearchResponse,
   UploadResponse,
+  Workspace,
 } from '@/types/api'
 
 export class ApiError extends Error {
@@ -55,234 +56,279 @@ async function handleResponse<T>(res: Response): Promise<T> {
   throw new ApiError(res.status, errorMessage, detailed)
 }
 
-export const api = {
-  async getHealth(): Promise<ReadinessResponse> {
-    const res = await fetch('/health/ready')
-    return handleResponse<ReadinessResponse>(res)
-  },
+export function createApi(workspaceId?: string) {
+  const scopedUrl = (url: string) => {
+    if (!workspaceId || !url.startsWith('/api/')) return url
+    const separator = url.includes('?') ? '&' : '?'
+    return `${url}${separator}workspace_id=${encodeURIComponent(workspaceId)}`
+  }
+  const scopedFetch = (url: string, options?: RequestInit) =>
+    fetch(scopedUrl(url), options)
+  return {
+    async getHealth(): Promise<ReadinessResponse> {
+      const res = await scopedFetch('/health/ready')
+      return handleResponse<ReadinessResponse>(res)
+    },
 
-  async getAssets(limit = 50, offset = 0): Promise<Asset[]> {
-    const res = await fetch(`/api/assets?limit=${limit}&offset=${offset}`)
-    return handleResponse<Asset[]>(res)
-  },
+    async getAssets(limit = 50, offset = 0): Promise<Asset[]> {
+      const res = await scopedFetch(
+        `/api/assets?limit=${limit}&offset=${offset}`
+      )
+      return handleResponse<Asset[]>(res)
+    },
 
-  async getAsset(id: string): Promise<Asset> {
-    const res = await fetch(`/api/assets/${id}`)
-    return handleResponse<Asset>(res)
-  },
+    async getAsset(id: string): Promise<Asset> {
+      const res = await scopedFetch(`/api/assets/${id}`)
+      return handleResponse<Asset>(res)
+    },
 
-  async uploadAsset(file: File): Promise<UploadResponse> {
-    const formData = new FormData()
-    formData.append('file', file)
-    const res = await fetch('/api/assets', {
-      method: 'POST',
-      body: formData,
-    })
-    return handleResponse<UploadResponse>(res)
-  },
+    async uploadAsset(file: File): Promise<UploadResponse> {
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await scopedFetch('/api/assets', {
+        method: 'POST',
+        body: formData,
+      })
+      return handleResponse<UploadResponse>(res)
+    },
 
-  async getAssetStatus(id: string): Promise<AssetStatus> {
-    const res = await fetch(`/api/assets/${id}/status`)
-    return handleResponse<AssetStatus>(res)
-  },
+    async getAssetStatus(id: string): Promise<AssetStatus> {
+      const res = await scopedFetch(`/api/assets/${id}/status`)
+      return handleResponse<AssetStatus>(res)
+    },
 
-  async retryAsset(id: string): Promise<{
-    status: string
-    asset_id: string
-    generation_id: string
-    job_id: string
-  }> {
-    const res = await fetch(`/api/assets/${id}/retry`, {
-      method: 'POST',
-    })
-    return handleResponse<{
+    async retryAsset(id: string): Promise<{
       status: string
       asset_id: string
       generation_id: string
       job_id: string
-    }>(res)
-  },
+    }> {
+      const res = await scopedFetch(`/api/assets/${id}/retry`, {
+        method: 'POST',
+      })
+      return handleResponse<{
+        status: string
+        asset_id: string
+        generation_id: string
+        job_id: string
+      }>(res)
+    },
 
-  async cancelAsset(
-    id: string,
-    generationId?: string
-  ): Promise<{
-    status: string
-    asset_id: string
-    generation_id: string
-    running_jobs: number
-  }> {
-    const res = await fetch(`/api/assets/${id}/cancel`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(generationId ? { generation_id: generationId } : {}),
-    })
-    return handleResponse<{
+    async cancelAsset(
+      id: string,
+      generationId?: string
+    ): Promise<{
       status: string
       asset_id: string
       generation_id: string
       running_jobs: number
-    }>(res)
-  },
+    }> {
+      const res = await scopedFetch(`/api/assets/${id}/cancel`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(
+          generationId ? { generation_id: generationId } : {}
+        ),
+      })
+      return handleResponse<{
+        status: string
+        asset_id: string
+        generation_id: string
+        running_jobs: number
+      }>(res)
+    },
 
-  async deleteAsset(id: string): Promise<void> {
-    const res = await fetch(`/api/assets/${id}`, {
-      method: 'DELETE',
-    })
-    await handleResponse<unknown>(res)
-  },
+    async deleteAsset(id: string): Promise<void> {
+      const res = await scopedFetch(`/api/assets/${id}`, {
+        method: 'DELETE',
+      })
+      await handleResponse<unknown>(res)
+    },
 
-  async reprocessAsset(
-    id: string,
-    profileName: string
-  ): Promise<{
-    status: string
-    asset_id: string
-    generation_id: string
-    job_id: string
-  }> {
-    const res = await fetch(`/api/assets/${id}/reprocess`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ profile_name: profileName }),
-    })
-    return handleResponse<{
+    async reprocessAsset(
+      id: string,
+      profileName: string
+    ): Promise<{
       status: string
       asset_id: string
       generation_id: string
       job_id: string
-    }>(res)
-  },
+    }> {
+      const res = await scopedFetch(`/api/assets/${id}/reprocess`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ profile_name: profileName }),
+      })
+      return handleResponse<{
+        status: string
+        asset_id: string
+        generation_id: string
+        job_id: string
+      }>(res)
+    },
 
-  async getProfiles(): Promise<Profile[]> {
-    const res = await fetch('/api/profiles')
-    return handleResponse<Profile[]>(res)
-  },
+    async getProfiles(): Promise<Profile[]> {
+      const res = await scopedFetch('/api/profiles')
+      return handleResponse<Profile[]>(res)
+    },
 
-  async saveProfile(name: string, options: IngestionOptions): Promise<Profile> {
-    const res = await fetch(`/api/profiles/${encodeURIComponent(name)}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ options }),
-    })
-    return handleResponse<Profile>(res)
-  },
-
-  async getPresignedUrl(
-    id: string
-  ): Promise<{ url: string; expires_in_seconds: number }> {
-    const res = await fetch(`/api/assets/${id}/presigned`)
-    return handleResponse<{ url: string; expires_in_seconds: number }>(res)
-  },
-
-  getAssetContentUrl(id: string): string {
-    return `/api/assets/${id}/content`
-  },
-
-  async searchText(
-    request: SearchRequest,
-    signal?: AbortSignal
-  ): Promise<SearchResponse> {
-    const res = await fetch('/api/search', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(request),
-      signal,
-    })
-    return handleResponse<SearchResponse>(res)
-  },
-
-  async searchImage(
-    file: File,
-    options: Omit<SearchRequest, 'query'> & { query?: string },
-    signal?: AbortSignal
-  ): Promise<SearchResponse> {
-    const formData = new FormData()
-    formData.append('file', file)
-    if (options.query) formData.append('query', options.query)
-    if (options.mode) formData.append('mode', options.mode)
-    if (options.limit !== undefined)
-      formData.append('limit', String(options.limit))
-    if (options.candidate_limit !== undefined)
-      formData.append('candidate_limit', String(options.candidate_limit))
-    if (options.representation_mode)
-      formData.append('representation_mode', options.representation_mode)
-
-    if (options.content_types && options.content_types.length > 0) {
-      formData.append('content_types', JSON.stringify(options.content_types))
-    }
-    if (options.asset_ids && options.asset_ids.length > 0) {
-      formData.append('asset_ids', JSON.stringify(options.asset_ids))
-    }
-    if (options.weights && Object.keys(options.weights).length > 0) {
-      formData.append('weights', JSON.stringify(options.weights))
-    }
-    if (
-      options.similarity_cutoffs &&
-      Object.keys(options.similarity_cutoffs).length > 0
-    ) {
-      formData.append(
-        'similarity_cutoffs',
-        JSON.stringify(options.similarity_cutoffs)
+    async saveProfile(
+      name: string,
+      options: IngestionOptions
+    ): Promise<Profile> {
+      const res = await scopedFetch(
+        `/api/profiles/${encodeURIComponent(name)}`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ options }),
+        }
       )
-    }
+      return handleResponse<Profile>(res)
+    },
 
-    const res = await fetch('/api/search/image', {
-      method: 'POST',
-      body: formData,
-      signal,
-    })
-    return handleResponse<SearchResponse>(res)
+    async getPresignedUrl(
+      id: string
+    ): Promise<{ url: string; expires_in_seconds: number }> {
+      const res = await scopedFetch(`/api/assets/${id}/presigned`)
+      return handleResponse<{ url: string; expires_in_seconds: number }>(res)
+    },
+
+    getAssetContentUrl(id: string): string {
+      return scopedUrl(`/api/assets/${id}/content`)
+    },
+
+    async searchText(
+      request: SearchRequest,
+      signal?: AbortSignal
+    ): Promise<SearchResponse> {
+      const res = await scopedFetch('/api/search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(request),
+        signal,
+      })
+      return handleResponse<SearchResponse>(res)
+    },
+
+    async searchImage(
+      file: File,
+      options: Omit<SearchRequest, 'query'> & { query?: string },
+      signal?: AbortSignal
+    ): Promise<SearchResponse> {
+      const formData = new FormData()
+      formData.append('file', file)
+      if (options.query) formData.append('query', options.query)
+      if (options.mode) formData.append('mode', options.mode)
+      if (options.limit !== undefined)
+        formData.append('limit', String(options.limit))
+      if (options.candidate_limit !== undefined)
+        formData.append('candidate_limit', String(options.candidate_limit))
+      if (options.representation_mode)
+        formData.append('representation_mode', options.representation_mode)
+
+      if (options.content_types && options.content_types.length > 0) {
+        formData.append('content_types', JSON.stringify(options.content_types))
+      }
+      if (options.asset_ids && options.asset_ids.length > 0) {
+        formData.append('asset_ids', JSON.stringify(options.asset_ids))
+      }
+      if (options.weights && Object.keys(options.weights).length > 0) {
+        formData.append('weights', JSON.stringify(options.weights))
+      }
+      if (
+        options.similarity_cutoffs &&
+        Object.keys(options.similarity_cutoffs).length > 0
+      ) {
+        formData.append(
+          'similarity_cutoffs',
+          JSON.stringify(options.similarity_cutoffs)
+        )
+      }
+
+      const res = await scopedFetch('/api/search/image', {
+        method: 'POST',
+        body: formData,
+        signal,
+      })
+      return handleResponse<SearchResponse>(res)
+    },
+
+    async searchMedia(
+      file: File,
+      options: Omit<SearchRequest, 'query'> & { query?: string },
+      signal?: AbortSignal
+    ): Promise<SearchResponse> {
+      const formData = new FormData()
+      formData.append('file', file)
+      if (options.query) formData.append('query', options.query)
+      if (options.mode) formData.append('mode', options.mode)
+      if (options.limit !== undefined)
+        formData.append('limit', String(options.limit))
+      if (options.candidate_limit !== undefined)
+        formData.append('candidate_limit', String(options.candidate_limit))
+      if (options.representation_mode)
+        formData.append('representation_mode', options.representation_mode)
+
+      if (options.content_types && options.content_types.length > 0) {
+        formData.append('content_types', JSON.stringify(options.content_types))
+      }
+      if (options.asset_ids && options.asset_ids.length > 0) {
+        formData.append('asset_ids', JSON.stringify(options.asset_ids))
+      }
+      if (options.weights && Object.keys(options.weights).length > 0) {
+        formData.append('weights', JSON.stringify(options.weights))
+      }
+      if (
+        options.similarity_cutoffs &&
+        Object.keys(options.similarity_cutoffs).length > 0
+      ) {
+        formData.append(
+          'similarity_cutoffs',
+          JSON.stringify(options.similarity_cutoffs)
+        )
+      }
+
+      const res = await scopedFetch('/api/search/media', {
+        method: 'POST',
+        body: formData,
+        signal,
+      })
+      return handleResponse<SearchResponse>(res)
+    },
+  }
+}
+
+export const api = createApi()
+
+export const workspaceApi = {
+  async list(): Promise<Workspace[]> {
+    return handleResponse<Workspace[]>(await fetch('/api/workspaces'))
   },
-
-  async searchMedia(
-    file: File,
-    options: Omit<SearchRequest, 'query'> & { query?: string },
-    signal?: AbortSignal
-  ): Promise<SearchResponse> {
-    const formData = new FormData()
-    formData.append('file', file)
-    if (options.query) formData.append('query', options.query)
-    if (options.mode) formData.append('mode', options.mode)
-    if (options.limit !== undefined)
-      formData.append('limit', String(options.limit))
-    if (options.candidate_limit !== undefined)
-      formData.append('candidate_limit', String(options.candidate_limit))
-    if (options.representation_mode)
-      formData.append('representation_mode', options.representation_mode)
-
-    if (options.content_types && options.content_types.length > 0) {
-      formData.append('content_types', JSON.stringify(options.content_types))
-    }
-    if (options.asset_ids && options.asset_ids.length > 0) {
-      formData.append('asset_ids', JSON.stringify(options.asset_ids))
-    }
-    if (options.weights && Object.keys(options.weights).length > 0) {
-      formData.append('weights', JSON.stringify(options.weights))
-    }
-    if (
-      options.similarity_cutoffs &&
-      Object.keys(options.similarity_cutoffs).length > 0
-    ) {
-      formData.append(
-        'similarity_cutoffs',
-        JSON.stringify(options.similarity_cutoffs)
-      )
-    }
-
-    const res = await fetch('/api/search/media', {
-      method: 'POST',
-      body: formData,
-      signal,
-    })
-    return handleResponse<SearchResponse>(res)
+  async create(name: string): Promise<Workspace> {
+    return handleResponse<Workspace>(
+      await fetch('/api/workspaces', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+    )
+  },
+  async rename(id: string, name: string): Promise<Workspace> {
+    return handleResponse<Workspace>(
+      await fetch(`/api/workspaces/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+    )
   },
 }

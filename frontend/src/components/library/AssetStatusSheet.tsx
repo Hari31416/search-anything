@@ -22,7 +22,8 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
-import { api, ApiError } from '@/lib/api'
+import { ApiError } from '@/lib/api'
+import { useWorkspaceApi } from '@/lib/workspaces'
 import { formatDate } from '@/lib/formatters'
 import type {
   Asset,
@@ -44,6 +45,7 @@ export function AssetStatusSheet({
   onOpenChange,
   onAssetUpdated,
 }: AssetStatusSheetProps) {
+  const api = useWorkspaceApi()
   const [statusData, setStatusData] = React.useState<AssetStatus | null>(null)
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
@@ -78,7 +80,7 @@ export function AssetStatusSheet({
     } finally {
       setLoading(false)
     }
-  }, [asset])
+  }, [asset, api])
 
   React.useEffect(() => {
     if (open && asset) {
@@ -105,7 +107,7 @@ export function AssetStatusSheet({
       setError(null)
       setActionError(null)
     }
-  }, [open, asset, fetchStatus, onAssetUpdated])
+  }, [open, asset, fetchStatus, onAssetUpdated, api])
 
   const toggleGenExpanded = (genId: string) => {
     setExpandedGenerations((prev) => ({

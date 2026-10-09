@@ -9,7 +9,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { api, ApiError } from '@/lib/api'
+import { ApiError } from '@/lib/api'
+import { useWorkspaceApi } from '@/lib/workspaces'
 import type { Asset, Profile } from '@/types/api'
 
 interface ReprocessDialogProps {
@@ -25,6 +26,7 @@ export function ReprocessDialog({
   onOpenChange,
   onSuccess,
 }: ReprocessDialogProps) {
+  const api = useWorkspaceApi()
   const [profiles, setProfiles] = React.useState<Profile[]>([])
   const [selectedProfile, setSelectedProfile] =
     React.useState<string>('automatic')
@@ -54,7 +56,7 @@ export function ReprocessDialog({
           setLoadingProfiles(false)
         })
     }
-  }, [open, selectedProfile])
+  }, [open, selectedProfile, api])
 
   const handleReprocess = async () => {
     if (!asset) return

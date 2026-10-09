@@ -13,7 +13,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { MatchItem } from '@/components/search/MatchItem'
 import { getMimeCategory } from '@/lib/formatters'
-import { api } from '@/lib/api'
+import { useWorkspaceApi } from '@/lib/workspaces'
 import type { SearchResult, Asset } from '@/types/api'
 
 interface SearchResultCardProps {
@@ -29,6 +29,7 @@ export function SearchResultCard({
   showMediaText,
   onPreviewAsset,
 }: SearchResultCardProps) {
+  const api = useWorkspaceApi()
   const [showInlinePreview, setShowInlinePreview] = React.useState(true)
   const mediaRef = React.useRef<HTMLMediaElement | null>(null)
 

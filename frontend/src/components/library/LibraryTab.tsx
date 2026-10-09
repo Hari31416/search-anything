@@ -20,13 +20,15 @@ import { AssetGrid } from '@/components/library/AssetGrid'
 import { AssetStatusSheet } from '@/components/library/AssetStatusSheet'
 import { ReprocessDialog } from '@/components/library/ReprocessDialog'
 import { SourcePreviewModal } from '@/components/search/SourcePreviewModal'
-import { api, ApiError } from '@/lib/api'
+import { ApiError } from '@/lib/api'
+import { useWorkspaceApi } from '@/lib/workspaces'
 import { formatBytes, getMimeCategory } from '@/lib/formatters'
 import type { Asset } from '@/types/api'
 
 type CategoryFilter = 'all' | 'image' | 'video' | 'audio' | 'document'
 
 export function LibraryTab() {
+  const api = useWorkspaceApi()
   const [assets, setAssets] = React.useState<Asset[]>([])
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
@@ -45,24 +47,27 @@ export function LibraryTab() {
 
   const pollIntervalRef = React.useRef<number | null>(null)
 
-  const loadAssets = React.useCallback(async (silent = false) => {
-    if (!silent) setLoading(true)
-    try {
-      const data = await api.getAssets(100, 0)
-      setAssets(data)
-      setError(null)
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setError(err.details)
-      } else if (err instanceof Error) {
-        setError(err.message)
-      } else {
-        setError('Failed to fetch library assets')
+  const loadAssets = React.useCallback(
+    async (silent = false) => {
+      if (!silent) setLoading(true)
+      try {
+        const data = await api.getAssets(100, 0)
+        setAssets(data)
+        setError(null)
+      } catch (err) {
+        if (err instanceof ApiError) {
+          setError(err.details)
+        } else if (err instanceof Error) {
+          setError(err.message)
+        } else {
+          setError('Failed to fetch library assets')
+        }
+      } finally {
+        if (!silent) setLoading(false)
       }
-    } finally {
-      if (!silent) setLoading(false)
-    }
-  }, [])
+    },
+    [api]
+  )
 
   React.useEffect(() => {
     loadAssets()

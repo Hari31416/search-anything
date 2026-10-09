@@ -18,7 +18,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { api } from '@/lib/api'
+import { useWorkspaceApi } from '@/lib/workspaces'
 import { pauseOtherMedia } from '@/lib/media-playback'
 import { formatBytes, formatDuration, getMimeCategory } from '@/lib/formatters'
 import type { Asset } from '@/types/api'
@@ -36,6 +36,7 @@ export function SourcePreviewModal({
   open,
   onOpenChange,
 }: SourcePreviewModalProps) {
+  const api = useWorkspaceApi()
   const mediaRef = React.useRef<HTMLMediaElement | null>(null)
   const [playbackError, setPlaybackError] = React.useState(false)
   const [presignedUrl, setPresignedUrl] = React.useState<string | null>(null)
@@ -54,7 +55,7 @@ export function SourcePreviewModal({
     } else {
       setPresignedUrl(null)
     }
-  }, [asset, open])
+  }, [asset, open, api])
 
   // Seek when media loaded
   const onLoadedMetadata = () => {

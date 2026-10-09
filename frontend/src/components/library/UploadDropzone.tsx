@@ -10,7 +10,8 @@ import {
   CheckCircle2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { api, ApiError } from '@/lib/api'
+import { ApiError } from '@/lib/api'
+import { useWorkspaceApi } from '@/lib/workspaces'
 import type { UploadResponse } from '@/types/api'
 
 interface UploadDropzoneProps {
@@ -24,6 +25,7 @@ interface UploadProgressState {
 }
 
 export function UploadDropzone({ onUploadSuccess }: UploadDropzoneProps) {
+  const api = useWorkspaceApi()
   const [isDragging, setIsDragging] = React.useState(false)
   const [uploading, setUploading] = React.useState(false)
   const [progress, setProgress] = React.useState<UploadProgressState | null>(

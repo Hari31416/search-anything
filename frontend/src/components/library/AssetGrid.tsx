@@ -32,7 +32,7 @@ import {
   formatDuration,
   getMimeCategory,
 } from '@/lib/formatters'
-import { api } from '@/lib/api'
+import { useWorkspaceApi } from '@/lib/workspaces'
 import type { Asset } from '@/types/api'
 
 interface AssetGridProps {
@@ -56,6 +56,7 @@ export function AssetGrid({
   onCancel,
   onDelete,
 }: AssetGridProps) {
+  const api = useWorkspaceApi()
   const [deleteTarget, setDeleteTarget] = React.useState<Asset | null>(null)
   const [activeMenuId, setActiveMenuId] = React.useState<string | null>(null)
 

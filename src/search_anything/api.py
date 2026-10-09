@@ -18,6 +18,7 @@ from uuid import UUID, uuid4
 
 import anyio
 from fastapi import (
+    APIRouter,
     Depends,
     FastAPI,
     File,
@@ -55,6 +56,25 @@ from search_anything.settings import Settings, get_settings
 from search_anything.storage import S3ObjectStorage
 
 logger = logging.getLogger(__name__)
+
+
+class WorkspaceWriteRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def clean_name(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return " ".join(value.split())
+        return value
+
+
+class WorkspaceResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    created_at: datetime
 
 
 class AssetResponse(BaseModel):
@@ -274,14 +294,15 @@ def _default_profile_config(settings: Settings) -> dict[str, Any]:
 
 
 async def _ensure_default_profile(
-    session: AsyncSession, settings: Settings
+    session: AsyncSession, settings: Settings, workspace_id: UUID | None = None
 ) -> IngestionProfile:
-    workspace_id = settings.default_workspace_id
-    await session.execute(
-        pg_insert(Workspace)
-        .values(id=workspace_id, name=settings.default_workspace_name)
-        .on_conflict_do_nothing(index_elements=[Workspace.id])
-    )
+    workspace_id = workspace_id or settings.default_workspace_id
+    if workspace_id == settings.default_workspace_id:
+        await session.execute(
+            pg_insert(Workspace)
+            .values(id=workspace_id, name=settings.default_workspace_name)
+            .on_conflict_do_nothing(index_elements=[Workspace.id])
+        )
     profile = await session.scalar(
         select(IngestionProfile)
         .where(
@@ -384,6 +405,59 @@ def create_app(
     app.state.storage = storage
     app.state.settings = settings
 
+    async def select_workspace(
+        request: Request,
+        workspace_id: Annotated[UUID | None, Query()] = None,
+    ) -> None:
+        selected = workspace_id or settings.default_workspace_id
+        async with session_factory() as selection_session:
+            async with selection_session.begin():
+                if selected == settings.default_workspace_id:
+                    await _ensure_default_profile(selection_session, settings)
+                elif await selection_session.get(Workspace, selected) is None:
+                    raise HTTPException(status_code=404, detail="workspace not found")
+        request.state.workspace_id = selected
+
+    scoped = APIRouter(dependencies=[Depends(select_workspace)])
+
+    @app.get("/api/workspaces", response_model=list[WorkspaceResponse])
+    async def list_workspaces(session: Session) -> list[WorkspaceResponse]:
+        async with session.begin():
+            await _ensure_default_profile(session, settings)
+            rows = (
+                await session.scalars(
+                    select(Workspace).order_by(
+                        Workspace.id != settings.default_workspace_id,
+                        Workspace.created_at,
+                        Workspace.id,
+                    )
+                )
+            ).all()
+        return [WorkspaceResponse.model_validate(row) for row in rows]
+
+    @app.post("/api/workspaces", response_model=WorkspaceResponse, status_code=201)
+    async def create_workspace(
+        body: WorkspaceWriteRequest, session: Session
+    ) -> WorkspaceResponse:
+        async with session.begin():
+            workspace = Workspace(id=uuid4(), name=body.name)
+            session.add(workspace)
+            await session.flush()
+            await _ensure_default_profile(session, settings, workspace.id)
+        return WorkspaceResponse.model_validate(workspace)
+
+    @app.patch("/api/workspaces/{workspace_id}", response_model=WorkspaceResponse)
+    async def rename_workspace(
+        workspace_id: UUID, body: WorkspaceWriteRequest, session: Session
+    ) -> WorkspaceResponse:
+        async with session.begin():
+            workspace = await session.get(Workspace, workspace_id)
+            if workspace is None:
+                raise HTTPException(status_code=404, detail="workspace not found")
+            workspace.name = body.name
+            await session.flush()
+        return WorkspaceResponse.model_validate(workspace)
+
     @app.get("/health/live")
     async def live() -> dict[str, str]:
         return {"status": "ok"}
@@ -406,7 +480,7 @@ def create_app(
             ) from error
         return ReadinessResponse(status="ready", database="ready", storage="ready")
 
-    @app.post("/api/assets", response_model=UploadResponse, status_code=201)
+    @scoped.post("/api/assets", response_model=UploadResponse, status_code=201)
     async def upload_asset(
         request: Request,
         session: Session,
@@ -417,7 +491,7 @@ def create_app(
         asset_id = uuid4()
         generation_id = uuid4()
         job_id = uuid4()
-        workspace_id = request.app.state.settings.default_workspace_id
+        workspace_id = request.state.workspace_id
         object_key = f"workspaces/{workspace_id}/assets/{asset_id}/original"
         digest = hashlib.sha256()
         size = 0
@@ -445,7 +519,7 @@ def create_app(
                 )
                 async with session.begin():
                     profile = await _ensure_default_profile(
-                        session, request.app.state.settings
+                        session, request.app.state.settings, request.state.workspace_id
                     )
                     asset = Asset(
                         id=asset_id,
@@ -500,7 +574,7 @@ def create_app(
             job_id=job_id,
         )
 
-    @app.get("/api/assets", response_model=list[AssetResponse])
+    @scoped.get("/api/assets", response_model=list[AssetResponse])
     async def list_assets(
         request: Request,
         session: Session,
@@ -511,8 +585,7 @@ def create_app(
             await session.scalars(
                 select(Asset)
                 .where(
-                    Asset.workspace_id
-                    == request.app.state.settings.default_workspace_id,
+                    Asset.workspace_id == request.state.workspace_id,
                     Asset.state.not_in(("deleting", "deleted")),
                 )
                 .order_by(Asset.created_at.desc())
@@ -536,22 +609,18 @@ def create_app(
             raise HTTPException(status_code=404, detail="asset not found")
         return asset
 
-    @app.get("/api/assets/{asset_id}", response_model=AssetResponse)
+    @scoped.get("/api/assets/{asset_id}", response_model=AssetResponse)
     async def get_asset(
         asset_id: UUID, request: Request, session: Session
     ) -> AssetResponse:
-        asset = await get_asset_or_404(
-            session, request.app.state.settings.default_workspace_id, asset_id
-        )
+        asset = await get_asset_or_404(session, request.state.workspace_id, asset_id)
         return AssetResponse.model_validate(asset)
 
-    @app.get("/api/assets/{asset_id}/status", response_model=AssetStatusResponse)
+    @scoped.get("/api/assets/{asset_id}/status", response_model=AssetStatusResponse)
     async def asset_status(
         asset_id: UUID, request: Request, session: Session
     ) -> AssetStatusResponse:
-        asset = await get_asset_or_404(
-            session, request.app.state.settings.default_workspace_id, asset_id
-        )
+        asset = await get_asset_or_404(session, request.state.workspace_id, asset_id)
         generations = (
             await session.scalars(
                 select(ProcessingGeneration)
@@ -596,19 +665,18 @@ def create_app(
             ],
         )
 
-    @app.get("/api/profiles", response_model=list[ProfileResponse])
+    @scoped.get("/api/profiles", response_model=list[ProfileResponse])
     async def list_profiles(
         request: Request, session: Session
     ) -> list[ProfileResponse]:
         async with session.begin():
-            await _ensure_default_profile(session, request.app.state.settings)
+            await _ensure_default_profile(
+                session, request.app.state.settings, request.state.workspace_id
+            )
         rows = (
             await session.scalars(
                 select(IngestionProfile)
-                .where(
-                    IngestionProfile.workspace_id
-                    == request.app.state.settings.default_workspace_id
-                )
+                .where(IngestionProfile.workspace_id == request.state.workspace_id)
                 .order_by(IngestionProfile.name, IngestionProfile.revision.desc())
             )
         ).all()
@@ -662,7 +730,7 @@ def create_app(
             raise HTTPException(status_code=422, detail="query produced no embedding")
         return vector
 
-    @app.post("/api/search")
+    @scoped.post("/api/search")
     async def search(
         body: SearchRequest, request: Request, session: Session
     ) -> dict[str, Any]:
@@ -673,7 +741,7 @@ def create_app(
         )
         results = await search_workspace(
             session,
-            request.app.state.settings.default_workspace_id,
+            request.state.workspace_id,
             query=body.query,
             vector=vector,
             mode=body.mode,
@@ -692,7 +760,7 @@ def create_app(
             "results": results,
         }
 
-    @app.post("/api/search/image")
+    @scoped.post("/api/search/image")
     async def search_image(
         request: Request,
         session: Session,
@@ -743,7 +811,7 @@ def create_app(
         )
         results = await search_workspace(
             session,
-            request.app.state.settings.default_workspace_id,
+            request.state.workspace_id,
             query=clean_query,
             vector=vector,
             mode=resolved_mode,
@@ -761,7 +829,7 @@ def create_app(
             "results": results,
         }
 
-    @app.post("/api/search/media")
+    @scoped.post("/api/search/media")
     async def search_media(
         request: Request,
         session: Session,
@@ -819,7 +887,7 @@ def create_app(
             )
         results = await search_workspace(
             session,
-            request.app.state.settings.default_workspace_id,
+            request.state.workspace_id,
             query=combined_query,
             vector=vector,
             mode=resolved_mode,
@@ -847,7 +915,7 @@ def create_app(
             "source_filename": filename,
         }
 
-    @app.put("/api/profiles/{profile_name}", response_model=ProfileResponse)
+    @scoped.put("/api/profiles/{profile_name}", response_model=ProfileResponse)
     async def save_profile(
         profile_name: str,
         body: ProfileWriteRequest,
@@ -856,16 +924,8 @@ def create_app(
     ) -> ProfileResponse:
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,119}", profile_name):
             raise HTTPException(status_code=422, detail="invalid profile name")
-        workspace_id = request.app.state.settings.default_workspace_id
+        workspace_id = request.state.workspace_id
         async with session.begin():
-            await session.execute(
-                pg_insert(Workspace)
-                .values(
-                    id=workspace_id,
-                    name=request.app.state.settings.default_workspace_name,
-                )
-                .on_conflict_do_nothing(index_elements=[Workspace.id])
-            )
             await session.scalar(
                 select(Workspace).where(Workspace.id == workspace_id).with_for_update()
             )
@@ -890,16 +950,14 @@ def create_app(
             await session.flush()
         return ProfileResponse.model_validate(profile)
 
-    @app.get("/api/assets/{asset_id}/content")
+    @scoped.get("/api/assets/{asset_id}/content")
     async def get_asset_content(
         asset_id: UUID,
         request: Request,
         session: Session,
     ) -> StreamingResponse:
         # Read Range directly from the request so FastAPI does not reinterpret it as a query parameter.
-        asset = await get_asset_or_404(
-            session, request.app.state.settings.default_workspace_id, asset_id
-        )
+        asset = await get_asset_or_404(session, request.state.workspace_id, asset_id)
         try:
             byte_range = parse_range(request.headers.get("range"), asset.byte_size)
         except UnsatisfiableRange as error:
@@ -944,24 +1002,22 @@ def create_app(
             headers=headers,
         )
 
-    @app.get("/api/assets/{asset_id}/presigned", response_model=PresignedURLResponse)
+    @scoped.get("/api/assets/{asset_id}/presigned", response_model=PresignedURLResponse)
     async def presigned_asset_url(
         asset_id: UUID, request: Request, session: Session
     ) -> PresignedURLResponse:
-        asset = await get_asset_or_404(
-            session, request.app.state.settings.default_workspace_id, asset_id
-        )
+        asset = await get_asset_or_404(session, request.state.workspace_id, asset_id)
         url = await request.app.state.storage.presigned_get_url(asset.storage_key)
         return PresignedURLResponse(
             url=url,
             expires_in_seconds=request.app.state.settings.storage_presign_seconds,
         )
 
-    @app.post("/api/assets/{asset_id}/retry", status_code=202)
+    @scoped.post("/api/assets/{asset_id}/retry", status_code=202)
     async def retry_asset(
         asset_id: UUID, request: Request, session: Session
     ) -> dict[str, str | UUID]:
-        workspace_id = request.app.state.settings.default_workspace_id
+        workspace_id = request.state.workspace_id
         now = datetime.now(timezone.utc)
         async with session.begin():
             asset = await session.scalar(
@@ -1021,14 +1077,14 @@ def create_app(
             "job_id": failed.id,
         }
 
-    @app.post("/api/assets/{asset_id}/cancel", status_code=202)
+    @scoped.post("/api/assets/{asset_id}/cancel", status_code=202)
     async def cancel_asset(
         asset_id: UUID,
         request: Request,
         session: Session,
         body: CancelRequest,
     ) -> dict[str, str | UUID | int]:
-        workspace_id = request.app.state.settings.default_workspace_id
+        workspace_id = request.state.workspace_id
         async with session.begin():
             asset = await session.scalar(
                 select(Asset)
@@ -1098,14 +1154,14 @@ def create_app(
             "running_jobs": running,
         }
 
-    @app.post("/api/assets/{asset_id}/reprocess", status_code=202)
+    @scoped.post("/api/assets/{asset_id}/reprocess", status_code=202)
     async def reprocess_asset(
         asset_id: UUID,
         body: ReprocessRequest,
         request: Request,
         session: Session,
     ) -> dict[str, str | UUID | int]:
-        workspace_id = request.app.state.settings.default_workspace_id
+        workspace_id = request.state.workspace_id
         generation_id = uuid4()
         job_id = uuid4()
         async with session.begin():
@@ -1117,7 +1173,9 @@ def create_app(
             if asset is None or asset.state in {"deleting", "deleted"}:
                 raise HTTPException(status_code=404, detail="asset not found")
             if body.profile_name == "automatic":
-                await _ensure_default_profile(session, request.app.state.settings)
+                await _ensure_default_profile(
+                    session, request.app.state.settings, request.state.workspace_id
+                )
             profile = await session.scalar(
                 select(IngestionProfile)
                 .where(
@@ -1208,11 +1266,11 @@ def create_app(
             "profile_revision": profile.revision,
         }
 
-    @app.delete("/api/assets/{asset_id}", status_code=202)
+    @scoped.delete("/api/assets/{asset_id}", status_code=202)
     async def delete_asset(
         asset_id: UUID, request: Request, session: Session
     ) -> dict[str, str | UUID]:
-        workspace_id = request.app.state.settings.default_workspace_id
+        workspace_id = request.state.workspace_id
         async with session.begin():
             asset = await session.scalar(
                 select(Asset)
@@ -1259,6 +1317,7 @@ def create_app(
                 session.add(cleanup)
         return {"status": "deleting", "asset_id": asset_id}
 
+    app.include_router(scoped)
     return app
 
 

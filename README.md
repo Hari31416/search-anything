@@ -62,6 +62,25 @@ previews, profiles, and extraction details are documented in
 [`docs/backend-foundation.md`](docs/backend-foundation.md) and
 [`docs/ingestion.md`](docs/ingestion.md).
 
+## Workspaces
+
+Use the workspace selector in the header to switch collections. The adjacent
+controls create and rename workspaces. Each workspace has its own assets,
+search results, and ingestion profile revisions. Selection persists in the
+browser, and switching clears the previous workspace's results and dialogs.
+Existing assets remain in their original workspace.
+
+The API exposes `GET /api/workspaces`, `POST /api/workspaces` with
+`{"name":"Apollo 11"}`, and `PATCH /api/workspaces/{id}` with a new name.
+Asset, profile, and search endpoints accept `?workspace_id=UUID`, including
+content and preview routes. Omitting it preserves the configured default
+workspace for existing API clients. An unknown workspace returns 404; assets
+belonging to another workspace also return 404.
+
+Workspaces share PostgreSQL and the local model worker. They separate
+collections; they do not provide user authentication or separate physical
+databases. No database migration is needed for this change.
+
 ## Search
 
 Text search is hybrid by default. Results are grouped by asset, with separate

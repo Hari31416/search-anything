@@ -3,7 +3,8 @@ import { SearchInput } from '@/components/search/SearchInput'
 import { SearchOptions } from '@/components/search/SearchOptions'
 import { SearchResults } from '@/components/search/SearchResults'
 import { SourcePreviewModal } from '@/components/search/SourcePreviewModal'
-import { api, ApiError } from '@/lib/api'
+import { ApiError } from '@/lib/api'
+import { useWorkspaceApi } from '@/lib/workspaces'
 import { getMimeCategory } from '@/lib/formatters'
 import type {
   Asset,
@@ -15,6 +16,7 @@ import type {
 } from '@/types/api'
 
 export function SearchTab() {
+  const api = useWorkspaceApi()
   const [query, setQuery] = React.useState('')
   const [queryFile, setQueryFile] = React.useState<File | null>(null)
 
@@ -45,6 +47,8 @@ export function SearchTab() {
 
   // Abort controller ref to cancel obsolete queries
   const abortControllerRef = React.useRef<AbortController | null>(null)
+
+  React.useEffect(() => () => abortControllerRef.current?.abort(), [])
 
   const hasCustomSettings =
     mode !== 'hybrid' ||

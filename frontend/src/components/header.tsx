@@ -2,6 +2,7 @@ import * as React from 'react'
 import { Moon, Sun, Search, Layers, SlidersHorizontal } from 'lucide-react'
 import { useTheme } from '@/components/theme-provider'
 import { Button } from '@/components/ui/button'
+import { WorkspaceSwitcher } from '@/components/WorkspaceSwitcher'
 import { api } from '@/lib/api'
 import type { ReadinessResponse } from '@/types/api'
 
@@ -43,13 +44,13 @@ export function Header({ activeTab, onSelectTab }: HeaderProps) {
             <div className="flex size-9 items-center justify-center rounded-xl bg-primary font-bold text-primary-foreground shadow-xs">
               <Search className="size-4.5" />
             </div>
-            <span className="text-base font-extrabold tracking-tight text-foreground">
+            <span className="hidden text-base font-extrabold tracking-tight text-foreground md:block">
               Search Anything
             </span>
           </div>
 
           <nav
-            className="hidden items-center gap-1 sm:flex"
+            className="hidden items-center gap-1 lg:flex"
             aria-label="Main Navigation"
           >
             <button
@@ -92,7 +93,7 @@ export function Header({ activeTab, onSelectTab }: HeaderProps) {
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Subtle minimal status indicator */}
+          <WorkspaceSwitcher />
           <div
             className="flex items-center"
             title={
@@ -134,7 +135,7 @@ export function Header({ activeTab, onSelectTab }: HeaderProps) {
       </div>
 
       <div
-        className="flex border-t border-border px-4 py-2 sm:hidden"
+        className="flex border-t border-border px-4 py-2 lg:hidden"
         aria-label="Mobile Navigation"
       >
         <div className="flex w-full justify-around gap-1">

@@ -3,10 +3,12 @@ import { Plus, RefreshCw, AlertCircle, Info } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ProfileCard } from '@/components/profiles/ProfileCard'
 import { ProfileEditorModal } from '@/components/profiles/ProfileEditorModal'
-import { api, ApiError } from '@/lib/api'
+import { ApiError } from '@/lib/api'
+import { useWorkspaceApi } from '@/lib/workspaces'
 import type { Profile } from '@/types/api'
 
 export function ProfilesTab() {
+  const api = useWorkspaceApi()
   const [profiles, setProfiles] = React.useState<Profile[]>([])
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
@@ -33,7 +35,7 @@ export function ProfilesTab() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [api])
 
   React.useEffect(() => {
     loadProfiles()

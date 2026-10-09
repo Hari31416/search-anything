@@ -18,7 +18,7 @@ import {
   getMimeCategory,
 } from '@/lib/formatters'
 import { getMatchPreview } from '@/lib/match-preview'
-import { api } from '@/lib/api'
+import { useWorkspaceApi } from '@/lib/workspaces'
 import type { SearchResult, Asset } from '@/types/api'
 
 interface SearchResultGridCardProps {
@@ -34,6 +34,7 @@ export function SearchResultGridCard({
   showMediaText,
   onPreviewAsset,
 }: SearchResultGridCardProps) {
+  const api = useWorkspaceApi()
   const [imageError, setImageError] = React.useState(false)
   const mediaRef = React.useRef<HTMLMediaElement | null>(null)
 

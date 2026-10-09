@@ -1,0 +1,130 @@
+"""Offline EmbeddingGemma adapter with actual processor budget checks."""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+from typing import Any, Sequence
+
+import numpy as np
+
+MODEL_ID = "google/embeddinggemma-2"
+MODEL_REVISION = "914f7f89142e33e77833254d9c9b90c3cef7303b"
+DIMENSIONS = 768
+
+
+class EmbeddingError(RuntimeError):
+    pass
+
+
+class ContextLimitError(EmbeddingError):
+    pass
+
+
+class LocalEmbeddingModel:
+    """Own one CPU float32 model and use its tokenizer/processor for validation."""
+
+    def __init__(
+        self,
+        model_path: Path,
+        revision: str = MODEL_REVISION,
+        context_tokens: int = 8192,
+        batch_size: int = 8,
+    ) -> None:
+        if revision != MODEL_REVISION:
+            raise EmbeddingError(f"unsupported embedding revision: {revision}")
+        model_path = model_path.expanduser().resolve()
+        if not model_path.is_dir() or model_path.name != revision:
+            raise EmbeddingError(
+                f"pinned local model snapshot is unavailable at {model_path}"
+            )
+        os.environ["HF_HUB_OFFLINE"] = "1"
+        os.environ["TRANSFORMERS_OFFLINE"] = "1"
+        os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
+        import torch
+        from sentence_transformers import SentenceTransformer
+
+        self.context_tokens = context_tokens
+        self.batch_size = batch_size
+        self.model = SentenceTransformer(
+            str(model_path),
+            device="cpu",
+            model_kwargs={"torch_dtype": torch.float32},
+            local_files_only=True,
+        )
+        self.tokenizer = self.model.tokenizer
+
+    def _processed(self, value: Any, *, prompt: str | None = None) -> dict[str, Any]:
+        processed = self.model.preprocess(
+            [value],
+            prompt=prompt,
+            processing_kwargs={"text": {"truncation": False}},
+        )
+        input_ids = processed.get("input_ids")
+        if input_ids is None:
+            raise EmbeddingError("model processor did not return input token IDs")
+        length = int(input_ids.shape[-1])
+        if length > self.context_tokens:
+            raise ContextLimitError(
+                f"processed input has {length} tokens; limit is {self.context_tokens}"
+            )
+        return processed
+
+    def count_text_tokens(self, text: str) -> int:
+        processed = self._processed(text)
+        return int(processed["input_ids"].shape[-1])
+
+    def text_token_offsets(self, text: str) -> list[tuple[int, int]]:
+        encoded = self.tokenizer(
+            text,
+            add_special_tokens=False,
+            truncation=False,
+            return_offsets_mapping=True,
+        )
+        return [tuple(pair) for pair in encoded["offset_mapping"]]
+
+    def embed_texts(self, values: Sequence[str]) -> list[list[float]]:
+        if not values:
+            return []
+        for value in values:
+            self._processed(value)
+        return self._encode(values)
+
+    def embed_images(self, images: Sequence[Any]) -> list[list[float]]:
+        if not images:
+            return []
+        for image in images:
+            self._processed(image)
+        return self._encode(images)
+
+    def _encode(self, values: Sequence[Any]) -> list[list[float]]:
+        vectors = self.model.encode(
+            list(values),
+            batch_size=min(self.batch_size, len(values)),
+            normalize_embeddings=True,
+            convert_to_numpy=True,
+            show_progress_bar=False,
+            processing_kwargs={"text": {"truncation": False}},
+        )
+        array = np.asarray(vectors, dtype=np.float32)
+        if array.shape != (len(values), DIMENSIONS):
+            raise EmbeddingError(f"embedding output has invalid shape {array.shape}")
+        if not np.isfinite(array).all():
+            raise EmbeddingError("embedding output contains a non-finite value")
+        norms = np.linalg.norm(array, axis=1)
+        if not np.all((norms >= 0.98) & (norms <= 1.02)):
+            raise EmbeddingError("embedding output is not normalized")
+        return array.tolist()
+
+    def embed_query(self, text: str) -> list[float]:
+        clean = text.strip()
+        if not clean:
+            raise EmbeddingError("query text cannot be empty")
+        formatted = f"task: search result | query: {clean}"
+        self._processed(formatted)
+        return self._encode([formatted])[0]
+
+
+def document_embedding_text(title: str | None, text: str) -> str:
+    clean_title = " ".join((title or "none").split()) or "none"
+    return f"title: {clean_title} | text: {text.strip()}"

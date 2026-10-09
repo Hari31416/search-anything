@@ -197,7 +197,13 @@ def create_app(
                                 workspace_id=workspace_id,
                                 name="automatic",
                                 revision=1,
-                                config={"strategy": "automatic", "version": 1},
+                                config={
+                                    "strategy": "automatic",
+                                    "version": 1,
+                                    "text_chunk_tokens": request.app.state.settings.chunk_target_tokens,
+                                    "text_overlap_tokens": request.app.state.settings.chunk_overlap_tokens,
+                                    "ocr_languages": request.app.state.settings.ocr_languages,
+                                },
                             )
                             .on_conflict_do_nothing(
                                 index_elements=[

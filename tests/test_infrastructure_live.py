@@ -4,27 +4,32 @@ from __future__ import annotations
 
 import asyncio
 import os
+from io import BytesIO
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 import httpx
+from PIL import Image, ImageDraw
 import pytest
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from search_anything.api import create_app
 from search_anything.db import make_engine
+from search_anything.embeddings import ContextLimitError
+from search_anything.ingestion import TextBlock, chunk_blocks
 from search_anything.jobs import (
     LeaseLost,
-    activate_generation,
     claim_job,
     complete_job,
 )
 from search_anything.models import (
     Asset,
+    Embedding,
     IngestionJob,
     IngestionProfile,
     ProcessingGeneration,
+    Representation,
 )
 from search_anything.settings import Settings
 from search_anything.storage import S3ObjectStorage
@@ -157,60 +162,183 @@ async def test_live_upload_ranges_presigned_jobs_generation_and_cleanup() -> Non
                     await complete_job(sessions, first)
                 await complete_job(sessions, recovered)
 
-                worker = Worker(settings, sessions, storage)
-                assert await worker.run_once()  # finish the upload's probe
-                async with sessions() as session:
-                    generation = await session.get(ProcessingGeneration, generation_id)
-                    assert generation is not None
-                    generation.state = "complete"
-                    await session.commit()
+                image = Image.new("RGB", (640, 240), "white")
+                ImageDraw.Draw(image).text((20, 40), "FIRE TRUCK", fill="black")
+                image_bytes = BytesIO()
+                image.save(image_bytes, format="PNG")
+                image_response = await client.post(
+                    "/api/assets",
+                    files={
+                        "file": ("fire-truck.png", image_bytes.getvalue(), "image/png")
+                    },
+                )
+                assert image_response.status_code == 201, image_response.text
+                image_result = image_response.json()
+                image_asset_id = UUID(image_result["asset"]["id"])
+                image_generation_id = UUID(image_result["generation_id"])
 
-                finalize_id = uuid4()
-                async with sessions() as session:
-                    session.add(
-                        IngestionJob(
-                            id=finalize_id,
-                            asset_id=asset_id,
-                            generation_id=generation_id,
-                            stage="finalize",
-                            status="queued",
-                            priority=-20,
-                            payload={},
-                            idempotency_key=f"finalize:{finalize_id}",
-                            max_attempts=3,
+                worker = Worker(settings, sessions, storage)
+                asset_ids = (asset_id, concurrent_asset_id, image_asset_id)
+                for _ in range(10):
+                    async with sessions() as session:
+                        generations = (
+                            await session.scalars(
+                                select(ProcessingGeneration).where(
+                                    ProcessingGeneration.asset_id.in_(asset_ids)
+                                )
+                            )
+                        ).all()
+                        all_active = len(generations) == 3 and all(
+                            generation.state == "active" for generation in generations
                         )
-                    )
-                    await session.commit()
-                finalize = await claim_job(sessions, "worker-c", lease_seconds=30)
-                assert finalize is not None and finalize.id == finalize_id
-                async with sessions() as session:
-                    async with session.begin():
-                        await activate_generation(
-                            session, asset_id, generation_id, finalize
-                        )
-                await complete_job(sessions, finalize)
+                    if all_active:
+                        break
+                    assert await worker.run_once()
+                assert all_active, "worker did not index all local fixtures"
                 async with sessions() as session:
                     asset = await session.get(Asset, asset_id)
                     assert asset is not None
                     assert asset.active_generation_id == generation_id
+                    text_embeddings = await session.scalar(
+                        select(func.count(Embedding.id))
+                        .join(Representation)
+                        .where(Representation.generation_id == generation_id)
+                    )
+                    assert text_embeddings > 0
+                    vector = await session.scalar(
+                        select(Embedding.vector)
+                        .join(Representation)
+                        .where(Representation.generation_id == generation_id)
+                        .limit(1)
+                    )
+                    assert (
+                        abs(sum(value * value for value in vector) ** 0.5 - 1.0) < 0.02
+                    )
+                    image_embeddings = await session.scalar(
+                        select(func.count(Embedding.id))
+                        .join(Representation)
+                        .where(Representation.generation_id == image_generation_id)
+                    )
+                    assert image_embeddings >= 2
+                    ocr_text = await session.scalar(
+                        select(Representation.text_content).where(
+                            Representation.generation_id == image_generation_id,
+                            Representation.kind == "ocr",
+                        )
+                    )
+                    assert ocr_text and "FIRE" in ocr_text.upper()
+                assert worker._embedding_model is not None
+                with pytest.raises(ContextLimitError):
+                    worker._embedding_model.embed_texts(["word " * 9000])
+                long_source = "A clear sentence ends here. " * 1800
+                long_chunks = await worker.scheduler.submit(
+                    chunk_blocks,
+                    [
+                        TextBlock(
+                            long_source,
+                            None,
+                            {"offset_unit": "unicode_codepoint"},
+                            0,
+                            len(long_source),
+                        )
+                    ],
+                    "long-fixture",
+                    worker._embedding_model,
+                    settings.chunk_target_tokens,
+                    settings.chunk_overlap_tokens,
+                    kind="ingestion",
+                )
+                assert len(long_chunks) > 1
+                for chunk in long_chunks:
+                    assert chunk.token_count <= settings.chunk_target_tokens
+                    assert (
+                        long_source[chunk.source_start : chunk.source_end] == chunk.text
+                    )
+                    assert chunk.text.endswith(".")
+
+                reprocessed_generation_id = uuid4()
+                async with sessions() as session:
+                    profile = await session.scalar(
+                        select(IngestionProfile).where(
+                            IngestionProfile.workspace_id
+                            == settings.default_workspace_id
+                        )
+                    )
+                    assert profile is not None
+                    session.add(
+                        ProcessingGeneration(
+                            id=reprocessed_generation_id,
+                            asset_id=asset_id,
+                            profile_snapshot={
+                                "profile_id": str(profile.id),
+                                "name": profile.name,
+                                "revision": profile.revision,
+                                **profile.config,
+                            },
+                            extractor_versions={},
+                            state="queued",
+                        )
+                    )
+                    await session.flush()
+                    session.add(
+                        IngestionJob(
+                            id=uuid4(),
+                            asset_id=asset_id,
+                            generation_id=reprocessed_generation_id,
+                            stage="probe",
+                            status="queued",
+                            priority=-20,
+                            payload={
+                                "asset_id": str(asset_id),
+                                "generation_id": str(reprocessed_generation_id),
+                            },
+                            idempotency_key=(
+                                f"generation:{reprocessed_generation_id}:probe"
+                            ),
+                            max_attempts=3,
+                        )
+                    )
+                    await session.commit()
+                assert await worker.run_once()
+                async with sessions() as session:
+                    asset = await session.get(Asset, asset_id)
+                    assert asset is not None
+                    assert asset.active_generation_id == generation_id
+                    assert asset.state == "ready"
+                assert await worker.run_once()
+                async with sessions() as session:
+                    asset = await session.get(Asset, asset_id)
+                    previous = await session.get(ProcessingGeneration, generation_id)
+                    replacement = await session.get(
+                        ProcessingGeneration, reprocessed_generation_id
+                    )
+                    assert asset is not None
+                    assert asset.active_generation_id == reprocessed_generation_id
+                    assert previous is not None and previous.state == "superseded"
+                    assert replacement is not None and replacement.state == "active"
 
                 deleted = await client.delete(f"/api/assets/{asset_id}")
                 assert deleted.status_code == 202
                 concurrent_deleted = await client.delete(
                     f"/api/assets/{concurrent_asset_id}"
                 )
+                image_deleted = await client.delete(f"/api/assets/{image_asset_id}")
                 assert concurrent_deleted.status_code == 202
+                assert image_deleted.status_code == 202
                 assert (
                     await client.get(f"/api/assets/{asset_id}/content")
                 ).status_code == 404
                 assert await worker.run_once()  # cleanup deletes storage and rows
                 assert await worker.run_once()
+                assert await worker.run_once()
                 async with sessions() as session:
                     assert await session.get(Asset, asset_id) is None
                     assert await session.get(Asset, concurrent_asset_id) is None
+                    assert await session.get(Asset, image_asset_id) is None
                 assert (await client.get(f"/api/assets/{asset_id}")).status_code == 404
                 assert (
                     await client.get(f"/api/assets/{concurrent_asset_id}")
                 ).status_code == 404
+                await worker.scheduler.close()
     finally:
         await engine.dispose()

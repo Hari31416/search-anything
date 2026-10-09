@@ -1,6 +1,6 @@
 # Search Anything build plan
 
-Status: implementation in progress. Phases 0 and 1 are complete; phase 2 is next.
+Status: implementation in progress. Phases 0 and 1 are complete; phase 2 is underway.
 
 Updated: 2026-10-09.
 
@@ -223,9 +223,14 @@ Use small local fixtures to check functional correctness, independent of the lat
 - Phase 1 complete. PostgreSQL/RustFS composition, migrations, workspace-scoped
   uploads, downloads, byte ranges, presigned access, cleanup, durable fenced
   jobs, probing, and the single-owner inference scheduler are implemented and
-  covered by unit and live integration checks. Uploads are currently probed;
-  extraction, indexing, and search begin in phase 2. Details and run commands
-  are in `docs/backend-foundation.md`.
+  covered by unit and live integration checks. Details and run commands are in
+  `docs/backend-foundation.md`.
+- Phase 2 in progress. Text, Markdown, HTML, PDF, DOCX, Python source, and image
+  uploads now run through local structural extraction, OCR where needed,
+  tokenizer-bounded segmentation, normalized EmbeddingGemma vectors, lexical
+  indexing, and atomic generation activation. The worker reads immutable
+  per-generation chunk/OCR options. Audio/video extraction and transcription,
+  profile and lifecycle endpoints, and broader media presets remain next.
 
 ## Planning sources
 

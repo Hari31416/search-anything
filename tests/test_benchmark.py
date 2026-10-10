@@ -119,3 +119,49 @@ def test_speech_selection_rejects_query_spanning_paragraphs(benchmark):
 def test_pilot_accepts_standalone_speech_task(benchmark):
     assets = [dict(task="speech", duration_seconds=i, bytes=100) for i in (1, 5, 10)]
     assert benchmark["select_pilot"](assets) == assets[1:]
+
+
+def test_natural_speech_crop_preserves_all_answer_occurrences(benchmark):
+    from prepare_expanded_benchmark import crop_bounds
+
+    start, end = crop_bounds(dict(start_second=[12, 35], end_second=[13, 39]), 40)
+    assert end - start == 30
+    assert start <= 12 and end >= 39
+    with pytest.raises(ValueError, match="cannot fit"):
+        crop_bounds(dict(start_second=[1, 35], end_second=[2, 39]), 40)
+    with pytest.raises(ValueError, match="Invalid"):
+        crop_bounds(dict(start_second=[-1], end_second=[3]), 40)
+
+
+def test_hard_image_selection_keeps_pairs_disjoint(benchmark):
+    from prepare_expanded_benchmark import select_image_pairs
+
+    rows = [
+        dict(image1=a, image2=b, caption1="query")
+        for a, b in (("a", "b"), ("b", "c"), ("d", "e"), ("f", "f"))
+    ]
+    selected = select_image_pairs(rows, count=2)
+    assert len({r[k] for r in selected for k in ("image1", "image2")}) == 4
+    assert selected == select_image_pairs(rows, count=2)
+
+
+def test_natural_speech_questions_use_distinct_articles(benchmark):
+    from prepare_expanded_benchmark import article, select_speech
+
+    rows = [
+        dict(
+            question_id=f"{family}-{i}-{j}",
+            document_id=f"article{i}_{j}",
+            answer_spans=dict(start_second=[10], end_second=[12]),
+        )
+        for i in range(60)
+        for j, family in enumerate(("nq", "squad"))
+    ]
+    durations = {r["document_id"]: 40 for r in rows}
+    selected = select_speech(rows, durations)
+    assert len(selected) == len({article(r) for r in selected}) == 50
+    assert selected == select_speech(rows, durations)
+    for family in ("nq", "squad"):
+        group = [r for r in selected if r["question_id"].startswith(family + "-")]
+        assert sum(r["split"] == "dev" for r in group) == 15
+        assert sum(r["split"] == "test" for r in group) == 10

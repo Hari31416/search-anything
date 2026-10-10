@@ -234,6 +234,97 @@ Fusion ranked relevant clips better near the top, but had lower Recall@10.
 This result differs from the environmental-sound task and supports keeping
 the two tasks separate when choosing ranking weights.
 
+## Hard images and natural speech
+
+`datasets/expanded-benchmark` adds two tasks to the earlier collections:
+
+| Task | Source | Candidates | Queries |
+| ---- | ------ | ---------: | ------: |
+| `image_hard` | COLA multi-object matching | 100 images | 50 |
+| `natural_speech` | SLUE-SQA-5 verified test | 100 passages | 50 |
+
+Both have 30 development and 20 held-out queries. Across all three local
+collections there are 1,150 assets and 350 queries. Each collection uses a
+separate workspace and keeps its own frozen manifest and results.
+
+COLA pairs images whose objects and attributes appear in different
+configurations. Selection keeps 50 disjoint image pairs. Both captions from
+25 pairs become queries; the other 25 pairs provide additional distractors.
+Each queried pair supplies a labeled positive and a known hard negative.
+Pairs never cross query splits. Primary retrieval still searches the full
+100-image pool. Labels are complete for the paired contrast, not necessarily
+every image in the pool. These are local regression metrics, not COLA's
+official two-image matching metric. This task tests compositional matching;
+it does not directly measure reading text in images.
+
+SLUE-SQA-5 uses natural human readings of Wikipedia. Selection uses the three
+manually verified test shards, then chooses one question per source article.
+The 50 questions are balanced across Natural Questions, SQuAD, CuratedTREC,
+TriviaQA and WebQuestions, with six development and four held-out questions
+per source in manifest version 2. Positive passages contain every labeled occurrence
+of the answer and are at most 30 seconds long. Questions whose answer
+occurrences cannot all fit are excluded. The other 50 candidates are passages
+from distinct documents, preferring articles without selected questions.
+Selected questions use 50 source articles and 50 speakers; all 100 speech
+candidates cover 98 articles and 98 speakers. Source articles supplying queries
+never cross splits, but speakers may overlap. This is read speech, not noisy
+meetings or conversation.
+
+The preparation retains original source offsets and answer times relative to
+each cropped file. Evaluation currently scores retrieval, not timestamp
+localization. Answer-based cropping deliberately tests bounded passage retrieval,
+not finding an answer in an entire recording. Reference transcripts, captions
+and answer strings stay in source/evaluation metadata. Ingestion only receives
+opaque filenames and original media, with speech converted to 16-bit PCM WAV.
+
+```sh
+uv run --with pyarrow==19.0.1 python scripts/prepare_expanded_benchmark.py
+uv run python scripts/prepare_expanded_benchmark.py --verify
+
+uv run python scripts/benchmark_search.py --root datasets/expanded-benchmark index --pilot
+uv run python scripts/benchmark_search.py --root datasets/expanded-benchmark index
+
+uv run python scripts/benchmark_search.py --root datasets/expanded-benchmark run \
+  --task image_hard --output datasets/expanded-benchmark/results/images-dev.json
+uv run python scripts/benchmark_search.py --root datasets/expanded-benchmark run \
+  --task natural_speech --output datasets/expanded-benchmark/results/speech-dev.json
+```
+
+Preparation downloads approximately 867 MB of source Parquet files plus only
+the selected images. Extracted media totals 110 MB, including 49.9 minutes of
+speech. The default retained preparation cap is 1.4 GB. All source revisions,
+file hashes, crop offsets and durations are recorded in the manifest.
+
+Preparation writes `configs/image-only.json`, `configs/audio-only.json` and
+`configs/transcript-only.json`. Pass a preset with `--config` to compare it
+with default fusion on the corresponding task. Use development queries while
+tuning. Preserve held-out queries for checking a selected change.
+
+The first run indexed the expansion in 5.8 minutes, including the pilot and
+model warmup. New preparation files plus allocated index growth used 1.10 GB.
+All local dataset files and application data volumes totaled 2.92 GB, excluding
+model caches and container images. Only development queries were evaluated:
+
+| Development task / configuration | Recall@5 | Recall@10 | MRR@10 |
+| -------------------------------- | -------: | --------: | -----: |
+| COLA / default fusion            |    73.3% |     86.7% |  0.569 |
+| COLA / image only                |    73.3% |     86.7% |  0.569 |
+| SLUE / default fusion            |     100% |      100% |  1.000 |
+| SLUE / audio only                |     100% |      100% |  0.967 |
+| SLUE / transcript only           |     100% |      100% |  1.000 |
+
+COLA exposes more ranking errors than the original COCO subset. The natural
+speech task covers more topics and speakers, but remains clean read speech
+with answer-centered crops and mostly unrelated candidate articles. Same-topic
+distractors, noisy conversations and dedicated OCR retrieval are still gaps.
+Detailed reports are in `datasets/expanded-benchmark/README.md`.
+An initial source-separated split was superseded by version 2, which balances
+question sources within both splits. Its manifest and initial baseline are
+archived locally under `datasets/expanded-benchmark-v1`. Media files are hard
+linked between versions, and identical asset hashes allowed reuse of the active
+index. No ranking changes were made during the correction. Current published
+results use version 2 development queries; no current held-out baseline was run.
+
 ## Sources and terms
 
 - [MMEB-V3](https://huggingface.co/datasets/VLM2Vec/MMEB-V3), including image task metadata.
@@ -247,6 +338,12 @@ the two tasks separate when choosing ranking weights.
 - [MTEB Spoken SQuAD retrieval](https://huggingface.co/datasets/mteb/spoken-squad-t2a)
   and [original Spoken SQuAD](https://github.com/Chia-Hsuan-Lee/Spoken-SQuAD).
   The MTEB mirror declares Apache-2.0; the speech derives from SQuAD text.
+- [COLA](https://github.com/ArijitRay1993/COLA) via
+  [the self-contained author mirror](https://huggingface.co/datasets/array/cola).
+  Annotations are MIT; the selected Visual Genome images retain their source terms.
+- [SLUE-SQA-5](https://huggingface.co/datasets/asapp/slue-phase-2).
+  Spoken Wikipedia audio is CC BY-SA 4.0. Question terms depend on the source:
+  TriviaQA is Apache-2.0 and the other question sources are CC BY-SA 4.0.
 
 Source datasets retain their own terms. Downloaded files, local asset mappings,
 query vectors and result reports stay under the gitignored `datasets/` root.

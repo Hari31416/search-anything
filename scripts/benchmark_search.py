@@ -523,7 +523,16 @@ if __name__ == "__main__":
     running = commands.add_parser("run")
     running.add_argument("--split", choices=["dev", "test", "all"], default="dev")
     running.add_argument(
-        "--task", choices=["text", "image", "audio", "video", "speech"]
+        "--task",
+        choices=[
+            "text",
+            "image",
+            "audio",
+            "video",
+            "speech",
+            "image_hard",
+            "natural_speech",
+        ],
     )
     running.add_argument("--config", type=Path)
     running.add_argument("--output", type=Path, required=True)

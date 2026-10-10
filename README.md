@@ -209,6 +209,8 @@ uses text, images, audio, and video from four MMEB-V3 source datasets, with a
 separate benchmark workspace and cached query embeddings.
 A separate Spoken SQuAD task adds 100 speech clips and 50 questions to measure
 retrieval of spoken information.
+An expanded collection adds COLA image composition and natural SLUE-SQA-5
+speech passages, with 100 candidates and 50 queries per task.
 
 Run formatting, lint, and unit checks with:
 

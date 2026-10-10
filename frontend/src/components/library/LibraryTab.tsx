@@ -182,9 +182,21 @@ export function LibraryTab() {
           <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
             Asset Library
           </h2>
-          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-            Browse and search your images, videos, audio, and documents.
-          </p>
+          <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm leading-relaxed text-muted-foreground">
+            <p>Browse and search your images, videos, audio, and documents.</p>
+            {assets.length > 0 && (
+              <p
+                className="flex items-center gap-2 whitespace-nowrap"
+                aria-label="Library summary"
+              >
+                <span className="font-medium text-foreground">
+                  {stats.total} assets
+                </span>
+                <span aria-hidden="true">·</span>
+                <span>{formatBytes(stats.totalBytes)} stored</span>
+              </p>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
@@ -211,19 +223,6 @@ export function LibraryTab() {
           </Button>
         </div>
       </div>
-
-      {assets.length > 0 && (
-        <p
-          className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground"
-          aria-label="Library summary"
-        >
-          <span className="font-medium text-foreground">
-            {stats.total} assets
-          </span>
-          <span aria-hidden="true">·</span>
-          <span>{formatBytes(stats.totalBytes)} stored</span>
-        </p>
-      )}
 
       {/* Uploader Section */}
       {showUpload && (

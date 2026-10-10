@@ -195,22 +195,6 @@ export function SearchOptions({
             )}
           </div>
         </div>
-
-        {/* Advanced Toggle */}
-        <Button
-          variant="outline"
-          size="xs"
-          onClick={() => setShowAdvanced((prev) => !prev)}
-          className="ml-auto gap-1.5 rounded-lg text-xs"
-        >
-          <SlidersHorizontal className="size-3" />
-          {showAdvanced ? 'Hide Weights' : 'Fine-Tune Weights'}
-          {showAdvanced ? (
-            <ChevronUp className="size-3" />
-          ) : (
-            <ChevronDown className="size-3" />
-          )}
-        </Button>
       </div>
 
       {representationMode === 'combined' && (
@@ -223,35 +207,61 @@ export function SearchOptions({
         </div>
       )}
 
-      {/* Content Type Quick Presets */}
-      <div className="flex flex-wrap items-center gap-2 border-t border-border/50 pt-3">
-        <span className="mr-1 text-[11px] font-bold tracking-wider text-muted-foreground uppercase">
-          Media:
-        </span>
-        {CONTENT_TYPE_PRESETS.map((preset) => {
-          const IconComponent = preset.icon
-          const active = isPresetActive(preset.types)
-          return (
-            <button
-              key={preset.label}
-              type="button"
-              onClick={() => onChangeSelectedTypes(preset.types)}
-              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-all ${
-                active
-                  ? 'bg-primary text-primary-foreground shadow-2xs'
-                  : 'border border-border/80 bg-muted/30 text-muted-foreground hover:bg-muted hover:text-foreground'
-              }`}
-            >
-              <IconComponent className="size-3.5" />
-              <span>{preset.label}</span>
-            </button>
-          )
-        })}
+      {/* Media filters and advanced controls share a single toolbar. */}
+      <div className="flex items-center justify-between gap-3 border-t border-border/50 pt-3">
+        <div
+          className="flex min-w-0 [scrollbar-width:none] items-center gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden"
+          role="group"
+          aria-label="Search media type"
+        >
+          {CONTENT_TYPE_PRESETS.map((preset) => {
+            const IconComponent = preset.icon
+            const active = isPresetActive(preset.types)
+            return (
+              <button
+                key={preset.label}
+                type="button"
+                aria-pressed={active}
+                onClick={() => onChangeSelectedTypes(preset.types)}
+                className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-1 text-xs font-semibold whitespace-nowrap transition-colors ${
+                  active
+                    ? 'bg-primary text-primary-foreground shadow-2xs'
+                    : 'border border-border/80 bg-muted/30 text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+              >
+                <IconComponent className="size-3.5" />
+                <span>{preset.label}</span>
+              </button>
+            )
+          })}
+        </div>
+        <Button
+          variant="outline"
+          size="xs"
+          onClick={() => setShowAdvanced((prev) => !prev)}
+          className="shrink-0 gap-1.5 rounded-lg text-xs"
+          aria-expanded={showAdvanced}
+          aria-controls="search-advanced-options"
+        >
+          <SlidersHorizontal className="size-3" />
+          <span className="hidden sm:inline">
+            {showAdvanced ? 'Hide Weights' : 'Fine-Tune Weights'}
+          </span>
+          <span className="sm:hidden">Weights</span>
+          {showAdvanced ? (
+            <ChevronUp className="size-3" />
+          ) : (
+            <ChevronDown className="size-3" />
+          )}
+        </Button>
       </div>
 
       {/* Advanced drawer: Limits, Weights, Cutoffs */}
       {showAdvanced && (
-        <div className="mt-4 animate-in space-y-5 rounded-xl border border-border/80 bg-muted/20 p-4 duration-200 fade-in-50">
+        <div
+          id="search-advanced-options"
+          className="mt-4 animate-in space-y-5 rounded-xl border border-border/80 bg-muted/20 p-4 duration-200 fade-in-50"
+        >
           {/* Limits */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">

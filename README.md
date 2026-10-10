@@ -207,6 +207,8 @@ The fixed local retrieval dataset and repeatable algorithm comparisons are
 documented in [docs/search-benchmark.md](docs/search-benchmark.md). The collection
 uses text, images, audio, and video from four MMEB-V3 source datasets, with a
 separate benchmark workspace and cached query embeddings.
+A separate Spoken SQuAD task adds 100 speech clips and 50 questions to measure
+retrieval of spoken information.
 
 Run formatting, lint, and unit checks with:
 

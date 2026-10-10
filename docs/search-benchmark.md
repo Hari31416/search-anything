@@ -166,6 +166,74 @@ match a caption. This version has no timestamp localization labels. A mixed
 workspace evaluation would also need extra relevance judgments and is not
 part of the primary score.
 
+## Spoken content
+
+A separate task adds 100 Spoken SQuAD candidates and 50 question queries
+under `datasets/spoken-squad-benchmark`. The original four-task collection,
+workspace and baseline reports remain frozen. Across both collections there
+are 950 assets and 250 queries.
+
+This task uses `mteb/spoken-squad-t2a` at revision
+`b311394fa5ab5e003012304799d0d724d64303b3`. Questions describe information to
+find in speech. Candidates are original sentence-level WAV files. Ingestion
+receives only opaque filenames and audio; it creates its own Whisper
+transcripts. Reference text is not uploaded.
+
+The upstream subset contains synthesized speech about Super Bowl 50. It tests
+spoken content retrieval within that topic, not natural meetings or broad
+topic coverage. Related sentences provide useful distractors. Add a natural
+speech collection such as SLUE-SQA-5 before drawing conclusions about meetings.
+
+Selection shuffles whole source paragraphs deterministically, assigns 60% to
+development and the remainder to held-out, then samples questions round-robin
+within each split. There are 30 development and 20 held-out questions. Every
+positive is retained. Remaining candidate slots use same-paragraph sentences,
+then random distractors. Source paragraphs never supply queries to both splits.
+
+```sh
+uv run --with pyarrow==19.0.1 python scripts/prepare_spoken_squad_benchmark.py
+uv run python scripts/prepare_spoken_squad_benchmark.py --verify
+
+uv run python scripts/benchmark_search.py --root datasets/spoken-squad-benchmark \
+  index --pilot
+uv run python scripts/benchmark_search.py --root datasets/spoken-squad-benchmark \
+  index
+
+uv run python scripts/benchmark_search.py --root datasets/spoken-squad-benchmark \
+  run --task speech --output datasets/spoken-squad-benchmark/results/experiment-dev.json
+```
+
+Preparation retains at most 500 MB by default, including the source corpus
+Parquet file. It downloads approximately 150 MB and extracts about 65 MB of
+selected audio. The manifest records source revisions, file hashes and clip
+durations. The shared index runner supports this standalone task and creates
+a separate workspace named after its manifest.
+
+Compare the same speech queries using audio-only, transcript-only and default
+hybrid fusion. Audio-only uses semantic mode with only the `audio` weight
+enabled. Transcript-only uses hybrid mode with `transcript`, `lexical` and
+`identifier` enabled, and all other weights zero. This includes keyword matching
+on generated transcripts. Fusion uses the application's default weights.
+Reports under this task's `results/` directory record exact configurations.
+Preparation also writes `configs/audio-only.json` and
+`configs/transcript-only.json`. Pass either with `--config` to the run command.
+Use `--split all` for an initial diagnostic comparison; use the default
+development split while tuning algorithms.
+
+The first run indexed this speech task in 3.0 minutes. Source files plus
+allocated index storage added 293 MB. Retrieval across all 50 queries took
+0.76–1.34 seconds with cached query embeddings. The initial scores were:
+
+| Speech configuration | Recall@5 | Recall@10 | MRR@10 |
+| -------------------- | -------: | --------: | -----: |
+| Audio only           |      80% |       90% |  0.643 |
+| Transcript only      |      77% |       92% |  0.679 |
+| Default fusion       |      86% |       88% |  0.688 |
+
+Fusion ranked relevant clips better near the top, but had lower Recall@10.
+This result differs from the environmental-sound task and supports keeping
+the two tasks separate when choosing ranking weights.
+
 ## Sources and terms
 
 - [MMEB-V3](https://huggingface.co/datasets/VLM2Vec/MMEB-V3), including image task metadata.
@@ -176,6 +244,9 @@ part of the primary score.
 - [MSR-VTT](https://huggingface.co/datasets/VLM2Vec/MSR-VTT), test_1k annotations
   and original video clips.
 - [COCO](https://cocodataset.org/), original validation images via its S3 origin.
+- [MTEB Spoken SQuAD retrieval](https://huggingface.co/datasets/mteb/spoken-squad-t2a)
+  and [original Spoken SQuAD](https://github.com/Chia-Hsuan-Lee/Spoken-SQuAD).
+  The MTEB mirror declares Apache-2.0; the speech derives from SQuAD text.
 
 Source datasets retain their own terms. Downloaded files, local asset mappings,
 query vectors and result reports stay under the gitignored `datasets/` root.

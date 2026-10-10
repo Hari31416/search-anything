@@ -88,7 +88,7 @@ def storage_size(settings: Settings, workspace: str) -> int:
 
 def select_pilot(assets: list[dict]) -> list[dict]:
     result = []
-    for task in ("text", "image", "audio", "video"):
+    for task in sorted({a["task"] for a in assets}):
         group = sorted(
             [a for a in assets if a["task"] == task],
             key=lambda a: a.get("duration_seconds", a["bytes"]),
@@ -123,9 +123,7 @@ async def index(root: Path, base_url: str, pilot: bool, max_seconds: int) -> Non
     with httpx.Client(base_url=base_url, timeout=120) as client:
         client.get("/health/ready").raise_for_status()
         if not state:
-            response = client.post(
-                "/api/workspaces", json={"name": "Search benchmark v1"}
-            )
+            response = client.post("/api/workspaces", json={"name": manifest["name"]})
             response.raise_for_status()
             state = dict(
                 workspace_id=response.json()["id"],
@@ -524,7 +522,9 @@ if __name__ == "__main__":
     indexing.add_argument("--max-seconds", type=int, default=2700)
     running = commands.add_parser("run")
     running.add_argument("--split", choices=["dev", "test", "all"], default="dev")
-    running.add_argument("--task", choices=["text", "image", "audio", "video"])
+    running.add_argument(
+        "--task", choices=["text", "image", "audio", "video", "speech"]
+    )
     running.add_argument("--config", type=Path)
     running.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()

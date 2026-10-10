@@ -60,6 +60,7 @@ test('transcript preview seeks to its passage rather than the fused window start
     getMatchPreview(match([unrelated, audio, representation({})])),
     {
       text: 'classified as NPA',
+      kind: 'transcript',
       start: 27.5,
       end: 29.98,
     }
@@ -82,6 +83,7 @@ test('audio-only preview uses the contributing audio window', () => {
   })
   assert.deepEqual(getMatchPreview(match([unrelated, audio])), {
     text: null,
+    kind: null,
     start: 25,
     end: 49.04,
   })
@@ -94,6 +96,7 @@ test('text without timestamps does not inherit misleading window timestamps', ()
     ),
     {
       text: 'classified as NPA',
+      kind: 'transcript',
       start: null,
       end: null,
     }
@@ -103,7 +106,31 @@ test('text without timestamps does not inherit misleading window timestamps', ()
 test('range-only matches retain their available bounds', () => {
   assert.deepEqual(getMatchPreview(match([])), {
     text: null,
+    kind: null,
     start: 0,
     end: 49.04,
+  })
+})
+
+test('mixed OCR and speech keep the source label with the contributing text', () => {
+  const ocr = representation({
+    representation_id: 'ocr',
+    kind: 'ocr',
+    text: 'Launch day',
+    time_start: 6,
+    time_end: 7,
+    channels: [],
+  })
+  assert.deepEqual(getMatchPreview(match([ocr, representation({})])), {
+    text: 'classified as NPA',
+    kind: 'transcript',
+    start: 27.5,
+    end: 29.98,
+  })
+  assert.deepEqual(getMatchPreview(match([ocr])), {
+    text: 'Launch day',
+    kind: 'ocr',
+    start: 6,
+    end: 7,
   })
 })

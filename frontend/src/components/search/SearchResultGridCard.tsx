@@ -46,8 +46,10 @@ export function SearchResultGridCard({
   const contentUrl = api.getAssetContentUrl(result.asset_id)
   const category = getMimeCategory(result.content_type)
 
-  const previews = result.matches.map(getMatchPreview)
-  const primarySnippet = previews.find((preview) => preview.text)?.text ?? null
+  const previews = result.matches.map((match, matchIndex) => ({
+    ...getMatchPreview(match),
+    matchIndex,
+  }))
   const timeMarkers =
     category === 'audio' || category === 'video'
       ? previews
@@ -59,41 +61,31 @@ export function SearchResultGridCard({
       : []
 
   const firstTimestamp = timeMarkers[0]?.start ?? null
-  const [activeTimestamp, setActiveTimestamp] = React.useState<number | null>(
-    firstTimestamp
-  )
+  const [selectedMatchIndex, setSelectedMatchIndex] = React.useState<
+    number | null
+  >(null)
+  const activeMatchIndex =
+    selectedMatchIndex ??
+    timeMarkers[0]?.matchIndex ??
+    previews.find((preview) => preview.text)?.matchIndex ??
+    0
+  const activePreview = previews[activeMatchIndex]
+  const activeTimestamp = activePreview?.start ?? null
 
   const displayedMarkers = showAllMarkers
     ? timeMarkers
     : timeMarkers.slice(0, 2)
   const remainingCount = timeMarkers.length - 2
 
-  // Extract OCR or transcript text representations across all matches
-  const allRepresentations = result.matches.flatMap((m) => m.representations)
-  const ocrRep = allRepresentations.find(
-    (r) => (r.kind === 'ocr' || r.channels?.includes('ocr')) && r.text?.trim()
-  )
-  const transcriptRep = allRepresentations.find(
-    (r) =>
-      (r.kind === 'transcript' || r.channels?.includes('transcript')) &&
-      r.text?.trim()
-  )
-  const textRep =
-    ocrRep ?? transcriptRep ?? allRepresentations.find((r) => r.text?.trim())
-
-  const snippetText = textRep?.text?.trim() ?? primarySnippet
-  const hasText = Boolean(snippetText)
-  const isOcr =
-    Boolean(ocrRep) ||
-    textRep?.kind === 'ocr' ||
-    textRep?.channels?.includes('ocr')
-
-  const textKindLabel = isOcr
-    ? 'OCR Text'
-    : textRep?.kind === 'transcript' ||
-        textRep?.channels?.includes('transcript')
-      ? 'Transcript'
-      : 'Matched Text'
+  const snippetText = activePreview?.text ?? null
+  const hasText = previews.some((preview) => Boolean(preview.text))
+  const textKindLabel = 'Matched text'
+  const sourceLabel =
+    activePreview?.kind === 'transcript'
+      ? 'Speech'
+      : activePreview?.kind === 'ocr'
+        ? 'On-screen text'
+        : null
 
   const asAsset: Asset = {
     id: result.asset_id,
@@ -114,9 +106,13 @@ export function SearchResultGridCard({
     }
   }
 
-  const handlePlayFrom = (e: React.MouseEvent, seconds: number) => {
+  const handlePlayFrom = (
+    e: React.MouseEvent,
+    matchIndex: number,
+    seconds: number
+  ) => {
     e.stopPropagation()
-    setActiveTimestamp(seconds)
+    setSelectedMatchIndex(matchIndex)
     if (mediaRef.current) {
       mediaRef.current.currentTime = seconds
       mediaRef.current.play().catch(() => {})
@@ -288,10 +284,11 @@ export function SearchResultGridCard({
               type="button"
               onClick={() =>
                 setShowCardText((prev) =>
-                  prev === null ? !showMediaText : !prev
+                  prev === null ? !isTextVisible : !prev
                 )
               }
               className="flex shrink-0 items-center gap-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:text-primary"
+              aria-expanded={isTextVisible}
               title={`${isTextVisible ? 'Hide' : 'Show'} ${textKindLabel}`}
             >
               <span>{textKindLabel}</span>
@@ -305,14 +302,30 @@ export function SearchResultGridCard({
         </div>
 
         {/* Matched Snippet (OCR / Speech transcript / text) with query highlights */}
-        {hasText && isTextVisible && snippetText ? (
+        {hasText && isTextVisible ? (
           <div className="animate-in rounded-lg border border-border/60 bg-muted/30 p-2 text-[11px] leading-relaxed text-muted-foreground duration-150 fade-in-50 select-text">
-            <span className="mb-0.5 block text-[9px] font-bold tracking-wider text-muted-foreground/80 uppercase">
-              {textKindLabel}
-            </span>
-            &ldquo;
-            <HighlightedText text={snippetText} query={searchQuery} />
-            &rdquo;
+            {(sourceLabel || activeTimestamp !== null) && (
+              <div className="mb-1 flex flex-wrap items-center gap-1 text-[10px] font-medium text-muted-foreground/80">
+                {sourceLabel && <span>{sourceLabel}</span>}
+                {sourceLabel && activeTimestamp !== null && (
+                  <span aria-hidden="true">·</span>
+                )}
+                {activeTimestamp !== null && (
+                  <span className="font-mono">
+                    {formatTimeRange(activeTimestamp, activePreview.end)}
+                  </span>
+                )}
+              </div>
+            )}
+            {snippetText ? (
+              <>
+                &ldquo;
+                <HighlightedText text={snippetText} query={searchQuery} />
+                &rdquo;
+              </>
+            ) : (
+              <span>No text available for this moment.</span>
+            )}
           </div>
         ) : null}
 
@@ -320,13 +333,14 @@ export function SearchResultGridCard({
         {timeMarkers.length > 0 ? (
           <div role="group" aria-label="Matching moments" className="pt-0.5">
             <div className="flex flex-wrap items-center gap-1">
-              {displayedMarkers.map((m, idx) => {
-                const isActive = activeTimestamp === m.start
+              {displayedMarkers.map((m) => {
+                const isActive = activeMatchIndex === m.matchIndex
                 return (
                   <button
-                    key={idx}
+                    key={m.matchIndex}
                     type="button"
-                    onClick={(e) => handlePlayFrom(e, m.start)}
+                    onClick={(e) => handlePlayFrom(e, m.matchIndex, m.start)}
+                    aria-pressed={isActive}
                     className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-medium shadow-2xs backdrop-blur-md transition-all duration-150 ${
                       isActive
                         ? 'border border-primary/70 bg-primary/20 font-semibold text-primary ring-1 ring-primary/30'
@@ -377,30 +391,9 @@ export function SearchResultGridCard({
         ) : category === 'image' ? (
           <div className="flex items-center justify-between gap-1.5 pt-0.5">
             <div className="flex items-center gap-1.5">
-              {hasText && isOcr ? (
-                <button
-                  type="button"
-                  onClick={() =>
-                    setShowCardText((prev) =>
-                      prev === null ? !showMediaText : !prev
-                    )
-                  }
-                  className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-medium transition-all duration-150 ${
-                    isTextVisible
-                      ? 'border border-primary/60 bg-primary/20 font-semibold text-primary'
-                      : 'border border-border/70 bg-secondary/70 text-secondary-foreground hover:border-primary/40 hover:text-foreground'
-                  }`}
-                  title={`${isTextVisible ? 'Hide' : 'View'} OCR text`}
-                >
-                  <FileText className="size-2.5 text-primary" />
-                  <span>{isTextVisible ? 'Hide OCR' : 'OCR Text'}</span>
-                </button>
-              ) : (
-                <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
-                  <ImageIcon className="size-2.5" />
-                  <span>Visual Match</span>
-                </span>
-              )}
+              <span className="text-[10px] text-muted-foreground">
+                {hasText ? 'On-screen text' : 'Visual match'}
+              </span>
             </div>
             <span className="font-mono text-[10px] font-semibold text-muted-foreground">
               {formatExtension}

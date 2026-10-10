@@ -20,6 +20,7 @@ export function getMatchPreview(match: SearchMatch) {
   const source = primary ?? timedEvidence ?? match
   return {
     text: primary?.text?.trim() ?? null,
+    kind: primary?.kind ?? null,
     start: source.time_start,
     end: source.time_end,
   }

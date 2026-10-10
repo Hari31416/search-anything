@@ -88,6 +88,23 @@ passages or moments and channel evidence under each asset. Filters, channel
 weights, and optional dense similarity cutoffs apply at request time; changing
 them does not reindex content.
 
+Ranking uses the strongest weighted channel score, with a supporting bonus
+of at most 1%. Dense channel scores combine reciprocal rank with squared,
+clamped cosine similarity; similarity is a relevance heuristic, not a
+calibrated probability across media types. Adding more channels cannot grow
+the bonus beyond the strongest supporting channel's contribution.
+
+OCR fragments without a two-character alphanumeric token are excluded from
+content matching. When OCR confidence metadata exists, at least half of its
+alphanumeric characters must come from words or lines with confidence 60 or
+higher. Short labels such as `A1` and `42` remain searchable, as do filenames
+regardless of OCR quality. These filters apply to existing indexed assets.
+
+Timed evidence only combines when every member shares a common interval.
+The returned match range is that interval, with each representation retaining
+its original timestamps. Overlapping windows cannot chain into a clip-wide
+match. Asset rank uses its best moment, rather than summing all moments.
+
 ```sh
 curl -X POST http://127.0.0.1:8000/api/search \
   -H 'Content-Type: application/json' \

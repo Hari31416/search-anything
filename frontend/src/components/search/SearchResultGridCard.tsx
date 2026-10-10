@@ -7,10 +7,8 @@ import {
   FileQuestion,
   Eye,
   Play,
-  Clock,
   Download,
 } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   formatDuration,
@@ -210,7 +208,7 @@ export function SearchResultGridCard({
       </div>
 
       {/* Card Content & Metadata */}
-      <div className="flex flex-1 flex-col justify-between p-3.5">
+      <div className="space-y-2.5 p-3">
         <div className="space-y-1.5">
           <h4
             onClick={() => onPreviewAsset(asAsset)}
@@ -226,21 +224,12 @@ export function SearchResultGridCard({
             <p className="line-clamp-2 rounded bg-muted/40 px-2 py-1 text-[11px] leading-relaxed text-muted-foreground select-text">
               &ldquo;{primarySnippet}&rdquo;
             </p>
-          ) : !primarySnippet ? (
-            <p className="text-[11px] text-muted-foreground/80 italic">
-              Visual / embedding match ({result.matches.length}{' '}
-              {result.matches.length === 1 ? 'match span' : 'match spans'})
-            </p>
           ) : null}
         </div>
 
         {/* Temporal Timestamps (for video and audio matches) */}
         {timeMarkers.length > 0 && (
-          <div className="mt-3 space-y-1 border-t border-border/50 pt-2.5">
-            <div className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
-              <Clock className="size-2.5" />
-              <span>Matched ranges:</span>
-            </div>
+          <div role="group" aria-label="Matching moments">
             <div className="flex flex-wrap gap-1">
               {timeMarkers.map((m, idx) => (
                 <button
@@ -257,19 +246,6 @@ export function SearchResultGridCard({
             </div>
           </div>
         )}
-
-        {/* Bottom Channel Badges */}
-        <div className="mt-3 flex items-center justify-between border-t border-border/50 pt-2 text-[10px] text-muted-foreground">
-          <div className="flex items-center gap-1">
-            <Badge variant="outline" className="px-1 py-0 font-mono text-[9px]">
-              {result.matches.length}{' '}
-              {result.matches.length === 1 ? 'hit' : 'hits'}
-            </Badge>
-          </div>
-          <span className="font-mono text-[9px]">
-            gen: {result.generation_id.slice(0, 6)}
-          </span>
-        </div>
       </div>
     </div>
   )

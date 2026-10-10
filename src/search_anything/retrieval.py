@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+import re
 from dataclasses import dataclass, field, replace
 from typing import Any, Sequence
 from uuid import UUID
@@ -19,6 +21,8 @@ from search_anything.models import (
 )
 
 FUSION_CONSTANT = 60
+SUPPORT_BONUS = 0.01
+MIN_OCR_CONFIDENCE = 60.0
 DEFAULT_WEIGHTS = {
     "text": 1.0,
     "transcript": 1.0,
@@ -78,13 +82,52 @@ class Candidate:
         return None
 
 
+def _usable_ocr(candidate: Candidate) -> bool:
+    """Reject OCR fragments without discarding short labels such as A1 or 42."""
+    if candidate.kind != "ocr":
+        return True
+    tokens = re.findall(r"[^\W_]+", candidate.text or "", flags=re.UNICODE)
+    if not any(len(token) >= 2 for token in tokens):
+        return False
+    words = candidate.location.get("ocr_words")
+    if words is None:
+        words = candidate.location.get("source_location", {}).get("ocr_words")
+    if not words:
+        # Older extracted text may not have confidence metadata.
+        return True
+    total = confident = 0
+    for word in words:
+        length = sum(char.isalnum() for char in str(word.get("text", "")))
+        total += length
+        try:
+            confidence = float(word.get("confidence", 0))
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(confidence) and confidence >= MIN_OCR_CONFIDENCE:
+            confident += length
+    return total > 0 and confident / total >= 0.5
+
+
+def _channel_score(candidate: Candidate, weight: float, rank: int) -> float:
+    score = weight / (FUSION_CONSTANT + rank)
+    if candidate.similarity is not None:
+        # Rank alone treats a weak channel winner like a strong visual match.
+        # Shared-model cosine is a quality heuristic, not a probability.
+        score *= max(0.0, min(1.0, candidate.similarity)) ** 2
+    return score
+
+
 def reciprocal_rank_fusion(
     channels: dict[str, Sequence[Candidate]], weights: dict[str, float] | None = None
 ) -> list[Candidate]:
-    """Align candidates first, then contribute only the best rank per channel/span."""
+    """Rank by strongest evidence with a bounded, channel-count-neutral bonus."""
     resolved = {**DEFAULT_WEIGHTS, **(weights or {})}
     channels = {
-        name: candidates
+        name: [
+            candidate
+            for candidate in candidates
+            if name == "filename" or _usable_ocr(candidate)
+        ]
         for name, candidates in channels.items()
         if resolved.get(name, 1.0) > 0 and candidates
     }
@@ -92,6 +135,11 @@ def reciprocal_rank_fusion(
         return []
     all_candidates = [candidate for items in channels.values() for candidate in items]
     parents = list(range(len(all_candidates)))
+    temporal_bounds = {
+        index: (candidate.time_start, candidate.time_end)
+        for index, candidate in enumerate(all_candidates)
+        if candidate.time_start is not None and candidate.time_end is not None
+    }
 
     def find(index: int) -> int:
         while parents[index] != index:
@@ -101,8 +149,16 @@ def reciprocal_rank_fusion(
 
     def union(left: int, right: int) -> None:
         root_left, root_right = find(left), find(right)
-        if root_left != root_right:
-            parents[root_right] = root_left
+        if root_left == root_right:
+            return
+        if root_left in temporal_bounds and root_right in temporal_bounds:
+            left_start, left_end = temporal_bounds[root_left]
+            right_start, right_end = temporal_bounds[root_right]
+            start, end = max(left_start, right_start), min(left_end, right_end)
+            if start >= end:
+                return
+            temporal_bounds[root_left] = (start, end)
+        parents[root_right] = root_left
 
     indexes: dict[UUID, int] = {}
     scopes: dict[tuple[Any, ...], list[int]] = {}
@@ -163,11 +219,20 @@ def reciprocal_rank_fusion(
             if representative is None:
                 continue
             rank = list(ranked).index(root) + 1
-            contributions[channel] = resolved.get(channel, 1.0) / (
-                FUSION_CONSTANT + rank
+            contributions[channel] = _channel_score(
+                representative, resolved.get(channel, 1.0), rank
             )
             evidence[channel] = representative
-        best = max(members, key=lambda item: (item.similarity or 0, item.text or ""))
+        primary = max(contributions, key=lambda name: (contributions[name], name))
+        supporting = {
+            name: value for name, value in contributions.items() if name != primary
+        }
+        support_total = sum(supporting.values())
+        if support_total:
+            bonus = SUPPORT_BONUS * max(supporting.values())
+            for name, value in supporting.items():
+                contributions[name] = bonus * value / support_total
+        best = evidence[primary]
         fused.append(
             replace(
                 best,
@@ -211,8 +276,8 @@ def group_assets(candidates: Sequence[Candidate]) -> list[dict[str, Any]]:
                 {
                     "score": span.score,
                     "channels": span.channels,
-                    "time_start": min(time_starts) if time_starts else None,
-                    "time_end": max(time_ends) if time_ends else None,
+                    "time_start": max(time_starts) if time_starts else None,
+                    "time_end": min(time_ends) if time_ends else None,
                     "source_start": min(source_starts) if source_starts else None,
                     "source_end": max(source_ends) if source_ends else None,
                     "representations": [
@@ -269,7 +334,7 @@ def _overlaps(left: Candidate, right: Candidate) -> bool:
         and right.time_start is not None
         and right.time_end is not None
     ):
-        return left.time_start <= right.time_end and right.time_start <= left.time_end
+        return left.time_start < right.time_end and right.time_start < left.time_end
     if (
         left.source_start is not None
         and left.source_end is not None
@@ -364,23 +429,20 @@ async def search_workspace(
                         Embedding.dimensions == DIMENSIONS,
                     )
                     .order_by(distance)
-                    .limit(candidate_limit)
+                    .limit(candidate_limit * 3 if kind == "ocr" else candidate_limit)
                 )
             ).all()
             cutoff = (similarity_cutoffs or {}).get(kind)
             channels[kind] = []
             for asset, generation, representation, segment, distance_value in rows:
                 similarity = 1.0 - float(distance_value)
-                if cutoff is None or similarity >= cutoff:
-                    channels[kind].append(
-                        _candidate(
-                            asset,
-                            generation,
-                            representation,
-                            segment,
-                            similarity=similarity,
-                        )
-                    )
+                candidate = _candidate(
+                    asset, generation, representation, segment, similarity=similarity
+                )
+                if (cutoff is None or similarity >= cutoff) and _usable_ocr(candidate):
+                    channels[kind].append(candidate)
+                    if len(channels[kind]) >= candidate_limit:
+                        break
 
     if (
         mode in {"keyword", "hybrid"}

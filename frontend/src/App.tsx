@@ -47,10 +47,6 @@ function WorkspaceApp() {
             <p>No workspace available.</p>
           )}
         </main>
-
-        <footer className="border-t border-border/60 px-4 py-4 text-center text-xs text-muted-foreground">
-          Search Anything · Search your files locally
-        </footer>
       </div>
     </>
   )

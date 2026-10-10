@@ -147,9 +147,9 @@ export function SearchResultGridCard({
 
   return (
     <div className="group relative flex h-full flex-col justify-between overflow-hidden rounded-xl border border-border/80 bg-card shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
-      {/* Visual Media Canvas: flex-1 allows image to expand and fill available row height */}
+      {/* Visual Media Canvas: locked aspect-16/10 ensures consistent row height across both landscape and portrait media */}
       <div
-        className="relative flex min-h-[175px] w-full flex-1 cursor-pointer items-center justify-center overflow-hidden bg-muted/40"
+        className="relative flex aspect-16/10 w-full shrink-0 cursor-pointer items-center justify-center overflow-hidden bg-muted/40"
         onClick={() =>
           onPreviewAsset(asAsset, activeTimestamp ?? firstTimestamp)
         }

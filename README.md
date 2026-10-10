@@ -1,6 +1,6 @@
 # Search Anything
 
-Search Anything indexes personal documents and media for local multimodal
+Search Anything indexes personal documents and media for Multimodal
 search. The backend runs PostgreSQL with pgvector and RustFS, and keeps the
 EmbeddingGemma and Whisper models on this Mac. The API and one worker run as
 separate local processes; the worker owns model inference.

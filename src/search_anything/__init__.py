@@ -1,3 +1,3 @@
-"""Local multimodal search backend."""
+"""Multimodal search backend."""
 
 __version__ = "0.1.0"

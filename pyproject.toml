@@ -1,7 +1,7 @@
 [project]
 name = "search-anything"
 version = "0.1.0"
-description = "Local multimodal search for personal files"
+description = "Multimodal search for personal files"
 requires-python = ">=3.12.11,<3.13"
 dependencies = [
     "alembic==1.20.0",

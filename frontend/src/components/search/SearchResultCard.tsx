@@ -20,6 +20,7 @@ interface SearchResultCardProps {
   result: SearchResult
   rank: number
   showMediaText: boolean
+  searchQuery?: string | null
   onPreviewAsset: (assetSummary: Asset, initialSeek?: number | null) => void
 }
 
@@ -27,6 +28,7 @@ export function SearchResultCard({
   result,
   rank,
   showMediaText,
+  searchQuery,
   onPreviewAsset,
 }: SearchResultCardProps) {
   const api = useWorkspaceApi()
@@ -35,6 +37,15 @@ export function SearchResultCard({
 
   const contentUrl = api.getAssetContentUrl(result.asset_id)
   const category = getMimeCategory(result.content_type)
+
+  const firstMatchTime =
+    result.matches.find((m) => m.time_start !== null)?.time_start ?? null
+
+  const handleMediaLoaded = (e: React.SyntheticEvent<HTMLMediaElement>) => {
+    if (typeof firstMatchTime === 'number' && firstMatchTime > 0) {
+      e.currentTarget.currentTime = firstMatchTime
+    }
+  }
 
   const renderTypeIcon = () => {
     switch (category) {
@@ -86,7 +97,7 @@ export function SearchResultCard({
           <div className="min-w-0">
             <h3
               className="cursor-pointer truncate text-sm font-bold text-foreground transition-colors hover:text-primary"
-              onClick={() => onPreviewAsset(asAsset)}
+              onClick={() => onPreviewAsset(asAsset, firstMatchTime)}
               title={result.filename}
             >
               {result.filename}
@@ -103,20 +114,14 @@ export function SearchResultCard({
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
           {/* Result rank */}
           <div
-            className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-1.5 shadow-2xs"
+            className="flex items-center rounded-md border border-border bg-background/80 px-2.5 py-1 text-xs font-bold text-foreground shadow-2xs"
             aria-label={`Result rank ${rank}`}
+            title={`Result rank ${rank}`}
           >
-            <div className="flex flex-col">
-              <span className="text-[9px] leading-none font-bold tracking-wider text-muted-foreground uppercase">
-                Rank
-              </span>
-              <span className="font-mono text-sm leading-tight font-extrabold text-primary sm:text-base">
-                #{rank}
-              </span>
-            </div>
+            <span className="font-mono">#{rank}</span>
           </div>
 
           <Button
@@ -139,7 +144,7 @@ export function SearchResultCard({
           <Button
             variant="outline"
             size="xs"
-            onClick={() => onPreviewAsset(asAsset)}
+            onClick={() => onPreviewAsset(asAsset, firstMatchTime)}
             className="gap-1 text-xs"
             title="Open theater modal preview"
           >
@@ -185,6 +190,7 @@ export function SearchResultCard({
                   src={contentUrl}
                   controls
                   preload="metadata"
+                  onLoadedMetadata={handleMediaLoaded}
                   className="max-h-96 w-full rounded-lg bg-black object-contain shadow-md"
                 >
                   Your browser does not support HTML5 video.
@@ -212,6 +218,8 @@ export function SearchResultCard({
                   }}
                   src={contentUrl}
                   controls
+                  preload="metadata"
+                  onLoadedMetadata={handleMediaLoaded}
                   className="w-full max-w-xl"
                 >
                   Your browser does not support HTML5 audio.
@@ -257,8 +265,9 @@ export function SearchResultCard({
               showText={
                 showMediaText || category === 'document' || category === 'other'
               }
+              searchQuery={searchQuery}
               onPlayTimestamp={handlePlayTimestamp}
-              onOpenSource={() => onPreviewAsset(asAsset)}
+              onOpenSource={() => onPreviewAsset(asAsset, firstMatchTime)}
             />
           ))}
         </div>

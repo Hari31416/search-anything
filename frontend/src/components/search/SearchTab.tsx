@@ -184,6 +184,7 @@ export function SearchTab() {
 
       <SearchResults
         response={response}
+        searchQuery={query}
         loading={loading}
         error={error}
         hasSearched={hasSearched}

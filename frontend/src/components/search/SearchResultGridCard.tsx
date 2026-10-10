@@ -8,8 +8,11 @@ import {
   Eye,
   Play,
   Download,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { HighlightedText } from '@/components/search/HighlightedText'
 import {
   formatDuration,
   formatTimeRange,
@@ -23,6 +26,7 @@ interface SearchResultGridCardProps {
   result: SearchResult
   rank: number
   showMediaText: boolean
+  searchQuery?: string | null
   onPreviewAsset: (asset: Asset, initialSeek?: number | null) => void
 }
 
@@ -30,14 +34,44 @@ export function SearchResultGridCard({
   result,
   rank,
   showMediaText,
+  searchQuery,
   onPreviewAsset,
 }: SearchResultGridCardProps) {
   const api = useWorkspaceApi()
   const [imageError, setImageError] = React.useState(false)
+  const [showCardText, setShowCardText] = React.useState<boolean | null>(null)
   const mediaRef = React.useRef<HTMLMediaElement | null>(null)
 
   const contentUrl = api.getAssetContentUrl(result.asset_id)
   const category = getMimeCategory(result.content_type)
+
+  const previews = result.matches.map(getMatchPreview)
+  const primarySnippet = previews.find((preview) => preview.text)?.text ?? null
+  const timeMarkers =
+    category === 'audio' || category === 'video'
+      ? previews
+          .filter(
+            (preview): preview is typeof preview & { start: number } =>
+              preview.start !== null
+          )
+          .slice(0, 4)
+      : []
+
+  const firstTimestamp = timeMarkers[0]?.start ?? null
+  const [activeTimestamp, setActiveTimestamp] = React.useState<number | null>(
+    firstTimestamp
+  )
+
+  // Identify whether snippet is primarily transcript, OCR, or general text
+  const textRep = result.matches
+    .flatMap((m) => m.representations)
+    .find((r) => r.text?.trim())
+  const textKindLabel =
+    textRep?.kind === 'transcript'
+      ? 'Transcript'
+      : textRep?.kind === 'ocr'
+        ? 'OCR Text'
+        : 'Matched Text'
 
   const asAsset: Asset = {
     id: result.asset_id,
@@ -52,20 +86,15 @@ export function SearchResultGridCard({
     active_generation_id: result.generation_id,
   }
 
-  const previews = result.matches.map(getMatchPreview)
-  const primarySnippet = previews.find((preview) => preview.text)?.text ?? null
-  const timeMarkers =
-    category === 'audio' || category === 'video'
-      ? previews
-          .filter(
-            (preview): preview is typeof preview & { start: number } =>
-              preview.start !== null
-          )
-          .slice(0, 4)
-      : []
+  const handleMediaLoaded = (e: React.SyntheticEvent<HTMLMediaElement>) => {
+    if (typeof firstTimestamp === 'number' && firstTimestamp > 0) {
+      e.currentTarget.currentTime = firstTimestamp
+    }
+  }
 
   const handlePlayFrom = (e: React.MouseEvent, seconds: number) => {
     e.stopPropagation()
+    setActiveTimestamp(seconds)
     if (mediaRef.current) {
       mediaRef.current.currentTime = seconds
       mediaRef.current.play().catch(() => {})
@@ -73,6 +102,11 @@ export function SearchResultGridCard({
       onPreviewAsset(asAsset, seconds)
     }
   }
+
+  const isTextVisible =
+    showCardText !== null
+      ? showCardText
+      : showMediaText || category === 'document' || category === 'other'
 
   const renderBadgeIcon = () => {
     switch (category) {
@@ -94,7 +128,9 @@ export function SearchResultGridCard({
       {/* Visual Media Canvas */}
       <div
         className="relative flex aspect-16/10 w-full cursor-pointer items-center justify-center overflow-hidden bg-muted/40"
-        onClick={() => onPreviewAsset(asAsset)}
+        onClick={() =>
+          onPreviewAsset(asAsset, activeTimestamp ?? firstTimestamp)
+        }
       >
         {category === 'image' && !imageError ? (
           <div className="relative h-full w-full overflow-hidden bg-black/5 dark:bg-black/30">
@@ -120,6 +156,7 @@ export function SearchResultGridCard({
               preload="metadata"
               playsInline
               controls
+              onLoadedMetadata={handleMediaLoaded}
               className="h-full w-full object-cover"
             />
           </div>
@@ -145,6 +182,7 @@ export function SearchResultGridCard({
               src={contentUrl}
               preload="metadata"
               controls
+              onLoadedMetadata={handleMediaLoaded}
               aria-label={`Play ${result.filename}`}
               className="mt-4 h-8 w-full"
               onClick={(e) => e.stopPropagation()}
@@ -186,7 +224,7 @@ export function SearchResultGridCard({
             className="size-7 rounded-md bg-black/75 text-white shadow-md backdrop-blur-xs hover:bg-black/90"
             onClick={(e) => {
               e.stopPropagation()
-              onPreviewAsset(asAsset)
+              onPreviewAsset(asAsset, activeTimestamp ?? firstTimestamp)
             }}
             title="Open modal preview"
           >
@@ -210,39 +248,81 @@ export function SearchResultGridCard({
       {/* Card Content & Metadata */}
       <div className="space-y-2.5 p-3">
         <div className="space-y-1.5">
-          <h4
-            onClick={() => onPreviewAsset(asAsset)}
-            title={result.filename}
-            className="cursor-pointer truncate text-xs font-semibold text-foreground transition-colors hover:text-primary"
-          >
-            {result.filename}
-          </h4>
+          <div className="flex items-center justify-between gap-2">
+            <h4
+              onClick={() =>
+                onPreviewAsset(asAsset, activeTimestamp ?? firstTimestamp)
+              }
+              title={result.filename}
+              className="cursor-pointer truncate text-xs font-semibold text-foreground transition-colors hover:text-primary"
+            >
+              {result.filename}
+            </h4>
+            {primarySnippet && (
+              <button
+                type="button"
+                onClick={() =>
+                  setShowCardText((prev) =>
+                    prev === null ? !showMediaText : !prev
+                  )
+                }
+                className="flex shrink-0 items-center gap-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:text-primary"
+                title={`${isTextVisible ? 'Hide' : 'Show'} ${textKindLabel}`}
+              >
+                <span>{textKindLabel}</span>
+                {isTextVisible ? (
+                  <ChevronUp className="size-2.5" />
+                ) : (
+                  <ChevronDown className="size-2.5" />
+                )}
+              </button>
+            )}
+          </div>
 
-          {/* Matched Snippet (OCR / Speech transcript / text) */}
-          {primarySnippet &&
-          (showMediaText || category === 'document' || category === 'other') ? (
-            <p className="line-clamp-2 rounded bg-muted/40 px-2 py-1 text-[11px] leading-relaxed text-muted-foreground select-text">
-              &ldquo;{primarySnippet}&rdquo;
-            </p>
+          {/* Matched Snippet (OCR / Speech transcript / text) with query highlights */}
+          {primarySnippet && isTextVisible ? (
+            <div className="animate-in rounded-lg border border-border/60 bg-muted/30 p-2 text-[11px] leading-relaxed text-muted-foreground duration-150 fade-in-50 select-text">
+              <span className="mb-0.5 block text-[9px] font-bold tracking-wider text-muted-foreground/80 uppercase">
+                {textKindLabel}
+              </span>
+              &ldquo;
+              <HighlightedText text={primarySnippet} query={searchQuery} />
+              &rdquo;
+            </div>
           ) : null}
         </div>
 
-        {/* Temporal Timestamps (for video and audio matches) */}
+        {/* Polished Temporal Timestamps (for video and audio matches) */}
         {timeMarkers.length > 0 && (
-          <div role="group" aria-label="Matching moments">
+          <div role="group" aria-label="Matching moments" className="space-y-1">
             <div className="flex flex-wrap gap-1">
-              {timeMarkers.map((m, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={(e) => handlePlayFrom(e, m.start)}
-                  className="inline-flex items-center gap-1 rounded bg-secondary/80 px-1.5 py-0.5 text-[10px] font-semibold text-secondary-foreground transition-colors hover:bg-primary hover:text-primary-foreground"
-                  title={`Jump to ${formatDuration(m.start)}`}
-                >
-                  <Play className="size-2 fill-current" />
-                  <span>{formatTimeRange(m.start, m.end)}</span>
-                </button>
-              ))}
+              {timeMarkers.map((m, idx) => {
+                const isActive = activeTimestamp === m.start
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={(e) => handlePlayFrom(e, m.start)}
+                    className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-medium shadow-2xs backdrop-blur-md transition-all duration-150 ${
+                      isActive
+                        ? 'border border-primary/70 bg-primary/20 font-semibold text-primary ring-1 ring-primary/30'
+                        : 'border border-border/70 bg-secondary/70 text-secondary-foreground hover:border-primary/40 hover:bg-secondary hover:text-foreground'
+                    }`}
+                    title={`Jump to ${formatDuration(m.start)}`}
+                  >
+                    <Play
+                      className={`size-2 transition-transform ${
+                        isActive
+                          ? 'scale-110 fill-current'
+                          : 'fill-muted-foreground'
+                      }`}
+                    />
+                    <span className="font-mono">
+                      {formatTimeRange(m.start, m.end)}
+                    </span>
+                  </button>
+                )
+              })}
             </div>
           </div>
         )}

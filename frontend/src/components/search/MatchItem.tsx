@@ -1,6 +1,14 @@
 import * as React from 'react'
-import { Clock, Play, FileText, ChevronDown, ChevronRight } from 'lucide-react'
+import {
+  Clock,
+  Play,
+  FileText,
+  ChevronDown,
+  ChevronRight,
+  MessageSquareText,
+} from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { HighlightedText } from '@/components/search/HighlightedText'
 import { formatScore, formatTimeRange } from '@/lib/formatters'
 import { getMatchPreview } from '@/lib/match-preview'
 import type { SearchMatch, RepresentationHit } from '@/types/api'
@@ -9,6 +17,7 @@ interface MatchItemProps {
   match: SearchMatch
   index: number
   showText: boolean
+  searchQuery?: string | null
   onPlayTimestamp?: (seconds: number) => void
   onOpenSource?: () => void
 }
@@ -17,9 +26,11 @@ export function MatchItem({
   match,
   index,
   showText,
+  searchQuery,
   onPlayTimestamp,
 }: MatchItemProps) {
   const [showEvidence, setShowEvidence] = React.useState(false)
+  const [localShowText, setLocalShowText] = React.useState<boolean | null>(null)
 
   const preview = getMatchPreview(match)
   const isTemporal = preview.start !== null
@@ -32,6 +43,15 @@ export function MatchItem({
 
   // Extract best text from representations (prioritizing non-empty text)
   const primaryText = preview.text
+  const isTextVisible = localShowText !== null ? localShowText : showText
+
+  const textRep = match.representations.find((r) => r.text?.trim())
+  const textKindLabel =
+    textRep?.kind === 'transcript'
+      ? 'Transcript'
+      : textRep?.kind === 'ocr'
+        ? 'OCR'
+        : 'Text'
 
   return (
     <div className="space-y-2.5 rounded-lg border border-border/70 bg-card/60 p-3.5 transition-all hover:border-primary/40">
@@ -42,14 +62,14 @@ export function MatchItem({
           </Badge>
 
           {isTemporal ? (
-            <div className="flex items-center gap-1.5 rounded-full bg-sky-500/10 px-2.5 py-0.5 text-xs font-medium text-sky-600 dark:text-sky-400">
+            <div className="flex items-center gap-1.5 rounded-md border border-sky-500/20 bg-sky-500/10 px-2.5 py-0.5 text-xs font-medium text-sky-600 shadow-2xs backdrop-blur-md dark:text-sky-400">
               <Clock className="size-3" />
               <span>{formatTimeRange(preview.start, preview.end)}</span>
               {onPlayTimestamp && preview.start !== null && (
                 <button
                   type="button"
                   onClick={() => onPlayTimestamp(preview.start!)}
-                  className="ml-1 flex items-center gap-0.5 rounded px-1 text-[10px] font-semibold hover:bg-sky-500/20"
+                  className="ml-1 flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-semibold text-sky-700 transition-colors hover:bg-sky-500/20 dark:text-sky-300"
                   title="Play from this moment"
                 >
                   <Play className="size-2.5 fill-current" /> Play
@@ -57,7 +77,7 @@ export function MatchItem({
               )}
             </div>
           ) : hasPage ? (
-            <div className="flex items-center gap-1 rounded bg-sky-500/10 px-2 py-0.5 text-xs text-sky-600 dark:text-sky-400">
+            <div className="flex items-center gap-1 rounded-md border border-sky-500/20 bg-sky-500/10 px-2 py-0.5 text-xs text-sky-600 dark:text-sky-400">
               <FileText className="size-3" />
               <span>Page {String(pageNumber)}</span>
             </div>
@@ -72,12 +92,32 @@ export function MatchItem({
               </span>
             )}
         </div>
+
+        {primaryText && (
+          <button
+            type="button"
+            onClick={() =>
+              setLocalShowText((prev) => (prev === null ? !showText : !prev))
+            }
+            className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <MessageSquareText className="size-3" />
+            <span>
+              {isTextVisible ? 'Hide' : 'Show'} {textKindLabel}
+            </span>
+          </button>
+        )}
       </div>
 
-      {/* Matched text rendered safely */}
-      {primaryText && showText ? (
-        <div className="rounded-md bg-muted/40 p-2.5 font-sans text-xs leading-relaxed text-foreground select-text">
-          &ldquo;{primaryText}&rdquo;
+      {/* Matched text rendered safely with query highlights */}
+      {primaryText && isTextVisible ? (
+        <div className="animate-in rounded-md border border-border/60 bg-muted/30 p-2.5 font-sans text-xs leading-relaxed text-foreground duration-150 fade-in-50 select-text">
+          <span className="mb-1 block text-[9px] font-bold tracking-wider text-muted-foreground uppercase">
+            {textKindLabel} Snippet
+          </span>
+          &ldquo;
+          <HighlightedText text={primaryText} query={searchQuery} />
+          &rdquo;
         </div>
       ) : !primaryText ? (
         <div className="text-xs text-muted-foreground italic">

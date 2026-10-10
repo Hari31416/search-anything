@@ -204,10 +204,12 @@ export function AssetGrid({
                   </div>
                 )}
 
-                {/* Status Badge in Top Left */}
-                <div className="absolute top-2.5 left-2.5 z-10">
-                  {renderStateBadge(asset.state)}
-                </div>
+                {/* Status Badge in Top Left for active/error states */}
+                {asset.state !== 'ready' && (
+                  <div className="absolute top-2.5 left-2.5 z-10">
+                    {renderStateBadge(asset.state)}
+                  </div>
+                )}
 
                 {/* Duration Badge in Bottom Left */}
                 {asset.duration_seconds !== null && (

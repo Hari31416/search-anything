@@ -11,6 +11,7 @@ import {
   List,
   ChevronDown,
   ChevronUp,
+  FileText,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SearchResultCard } from '@/components/search/SearchResultCard'
@@ -20,6 +21,7 @@ import type { SearchResponse, Asset } from '@/types/api'
 
 interface SearchResultsProps {
   response: SearchResponse | null
+  searchQuery?: string | null
   loading: boolean
   error: string | null
   hasSearched: boolean
@@ -28,6 +30,7 @@ interface SearchResultsProps {
 
 export function SearchResults({
   response,
+  searchQuery,
   loading,
   error,
   hasSearched,
@@ -36,6 +39,8 @@ export function SearchResults({
   const [viewMode, setViewMode] = React.useState<'grid' | 'list'>('grid')
   const [showQueryDetails, setShowQueryDetails] = React.useState(false)
   const [showMediaText, setShowMediaText] = React.useState(false)
+
+  const activeQuery = response?.query || searchQuery || null
 
   if (loading) {
     return (
@@ -80,18 +85,28 @@ export function SearchResults({
 
   if (!hasSearched || !response) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/80 bg-card/40 p-12 text-center">
-        <div className="flex size-14 items-center justify-center rounded-2xl bg-muted/60 text-muted-foreground shadow-inner">
-          <Search className="size-7" />
+      <div className="relative mx-auto flex max-w-2xl flex-col items-center justify-center overflow-hidden rounded-2xl border border-border/80 bg-card/60 p-12 text-center shadow-lg backdrop-blur-xl">
+        {/* Ambient atmospheric glow */}
+        <div className="pointer-events-none absolute -top-24 left-1/2 size-64 -translate-x-1/2 rounded-full bg-primary/10 blur-3xl" />
+
+        <div className="relative flex size-14 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary shadow-xs">
+          <Search className="size-6" />
         </div>
-        <h3 className="mt-4 text-base font-bold text-foreground">
+        <h3 className="relative mt-4 text-base font-bold text-foreground">
           Ready for Multimodal Discovery
         </h3>
-        <p className="mt-1.5 max-w-md text-xs leading-relaxed text-muted-foreground">
+        <p className="relative mt-1.5 max-w-md text-xs leading-relaxed text-muted-foreground">
           Search with text, upload images to find visual matches, or attach
           audio/video to locate specific spoken phrases and scenes using hybrid
           vector embeddings.
         </p>
+        <div className="relative mt-5 flex items-center gap-2 rounded-full border border-border/70 bg-background/70 px-3.5 py-1 text-[11px] text-muted-foreground backdrop-blur-xs">
+          <span>Press</span>
+          <kbd className="rounded border border-border bg-muted/70 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-foreground">
+            Enter
+          </kbd>
+          <span>to search or attach files above</span>
+        </div>
       </div>
     )
   }
@@ -187,7 +202,7 @@ export function SearchResults({
         </div>
       )}
 
-      {/* Results Header with View Mode Switcher */}
+      {/* Results Header with View Mode Switcher and OCR/Transcript Toggle */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-3 text-xs text-muted-foreground">
         <div className="flex items-center gap-2">
           <span>
@@ -210,21 +225,30 @@ export function SearchResults({
           </span>
         </div>
 
-        {/* View Switcher: Media Grid vs Detailed List */}
+        {/* View Switcher & OCR/Transcript Toggle */}
         <div className="flex flex-wrap items-center gap-2">
           {results.some((result) =>
             /^(image|audio|video)\//.test(result.content_type)
           ) && (
             <Button
               type="button"
-              variant="ghost"
+              variant="outline"
               size="xs"
               aria-pressed={showMediaText}
               onClick={() => setShowMediaText((previous) => !previous)}
+              className={`gap-1.5 transition-all ${
+                showMediaText
+                  ? 'border-primary/50 bg-primary/15 font-semibold text-primary shadow-2xs'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
             >
-              {showMediaText ? 'Hide' : 'Show'} OCR &amp; transcripts
+              <FileText className="size-3" />
+              <span>
+                {showMediaText ? 'Hide' : 'Show'} OCR &amp; transcripts
+              </span>
             </Button>
           )}
+
           <div className="flex items-center gap-1 rounded-lg border border-border bg-muted/40 p-0.5">
             <Button
               type="button"
@@ -281,6 +305,7 @@ export function SearchResults({
               result={result}
               rank={index + 1}
               showMediaText={showMediaText}
+              searchQuery={activeQuery}
               onPreviewAsset={onPreviewAsset}
             />
           ))}
@@ -293,6 +318,7 @@ export function SearchResults({
               result={result}
               rank={index + 1}
               showMediaText={showMediaText}
+              searchQuery={activeQuery}
               onPreviewAsset={onPreviewAsset}
             />
           ))}

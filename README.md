@@ -203,6 +203,11 @@ make logs-frontend  # Follow logs/frontend.log
 
 ## Validation
 
+The fixed local retrieval dataset and repeatable algorithm comparisons are
+documented in [docs/search-benchmark.md](docs/search-benchmark.md). The collection
+uses text, images, audio, and video from four MMEB-V3 source datasets, with a
+separate benchmark workspace and cached query embeddings.
+
 Run formatting, lint, and unit checks with:
 
 ```sh

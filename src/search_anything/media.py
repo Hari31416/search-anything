@@ -270,7 +270,8 @@ def extract_video_frames(
             "-i",
             str(source),
             "-vf",
-            f"trim=duration={window_duration:.9f},setpts=PTS-STARTPTS+{window.start:.9f}/TB,fps={effective_fps:.9f},showinfo",
+            f"trim=duration={window_duration:.9f},setpts=PTS-STARTPTS,"
+            f"fps={effective_fps:.9f},trim=duration={window_duration:.9f},showinfo",
             "-frames:v",
             str(MAX_VIDEO_FRAMES_PER_WINDOW),
             "-fps_mode",
@@ -290,7 +291,10 @@ def extract_video_frames(
             "frame_timestamps_missing",
             "FFmpeg did not report every decoded frame timestamp",
         )
-    timestamps = raw_times
+    # Sample on a window-relative clock. Offsetting before fps quantizes the
+    # source start onto its sampling grid, which can move short tail frames
+    # outside their window. Add the source offset without time-base rounding.
+    timestamps = [window.start + timestamp for timestamp in raw_times]
     if len(paths) > MAX_VIDEO_FRAMES_PER_WINDOW:
         raise MediaProcessingError(
             "frame_limit_exceeded", "FFmpeg exceeded the per-window frame limit"

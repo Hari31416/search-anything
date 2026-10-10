@@ -138,6 +138,15 @@ def test_video_frames_preserve_timestamps_after_nonzero_seek(tmp_path: Path) -> 
     assert frames.timestamps[-1] > 4.8
     assert all(3.0 <= timestamp <= 5.0 for timestamp in frames.timestamps)
 
+    tail = extract_video_frames(
+        source,
+        tmp_path / "tail-frames",
+        MediaWindow(7.0, 7.666667),
+        frames_per_second=1,
+    )
+    assert tail.paths
+    assert all(7.0 <= timestamp < 7.666667 for timestamp in tail.timestamps)
+
     short_source = tmp_path / "short.mp4"
     subprocess.run(
         [

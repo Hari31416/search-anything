@@ -42,7 +42,7 @@ export function SearchResults({
       <div className="space-y-4">
         <div className="flex animate-pulse items-center gap-2 text-xs text-muted-foreground">
           <Loader2 className="size-3.5 animate-spin text-primary" />
-          <span>Searching cross-modal embeddings and vector indexes...</span>
+          <span>Searching your library...</span>
         </div>
 
         {/* Skeleton cards */}

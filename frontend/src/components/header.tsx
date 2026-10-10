@@ -2,6 +2,13 @@ import * as React from 'react'
 import { Moon, Sun, Search, Layers, SlidersHorizontal } from 'lucide-react'
 import { useTheme } from '@/components/theme-provider'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog'
 import { WorkspaceSwitcher } from '@/components/WorkspaceSwitcher'
 import { api } from '@/lib/api'
 import type { ReadinessResponse } from '@/types/api'
@@ -13,6 +20,7 @@ interface HeaderProps {
 
 export function Header({ activeTab, onSelectTab }: HeaderProps) {
   const { theme, setTheme } = useTheme()
+  const [statusOpen, setStatusOpen] = React.useState(false)
   const [health, setHealth] = React.useState<ReadinessResponse | null>(null)
   const [healthError, setHealthError] = React.useState<string | null>(null)
   const checkHealth = React.useCallback(async () => {
@@ -94,26 +102,73 @@ export function Header({ activeTab, onSelectTab }: HeaderProps) {
 
         <div className="flex items-center gap-3">
           <WorkspaceSwitcher />
-          <div
-            className="flex items-center"
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Backend status"
             title={
               health
-                ? 'Backend Ready'
+                ? 'Backend ready'
                 : healthError
-                  ? `Offline: ${healthError}`
-                  : 'Connecting...'
+                  ? 'Backend offline'
+                  : 'Connecting'
             }
+            onClick={() => setStatusOpen(true)}
           >
             <span
-              className={`size-2 rounded-full ${
-                health
-                  ? 'bg-emerald-500'
-                  : healthError
-                    ? 'bg-destructive'
-                    : 'animate-pulse bg-amber-500'
-              }`}
+              aria-hidden="true"
+              className={`size-2 rounded-full ${health ? 'bg-emerald-500' : healthError ? 'bg-destructive' : 'animate-pulse bg-amber-500'}`}
             />
-          </div>
+          </Button>
+          <Dialog open={statusOpen} onOpenChange={setStatusOpen}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>Backend status</DialogTitle>
+                <DialogDescription>
+                  {health
+                    ? 'Connected and ready to search.'
+                    : healthError
+                      ? 'Unable to connect to the backend.'
+                      : 'Checking the connection...'}
+                </DialogDescription>
+              </DialogHeader>
+              <dl className="space-y-3 text-sm">
+                <div className="flex justify-between gap-4">
+                  <dt className="text-muted-foreground">API route</dt>
+                  <dd className="font-mono">/api</dd>
+                </div>
+                {health && (
+                  <>
+                    <div className="flex justify-between gap-4">
+                      <dt className="text-muted-foreground">Database</dt>
+                      <dd>{health.database}</dd>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <dt className="text-muted-foreground">Storage</dt>
+                      <dd>{health.storage}</dd>
+                    </div>
+                  </>
+                )}
+                <div className="flex justify-between gap-4">
+                  <dt className="text-muted-foreground">Processing</dt>
+                  <dd>Local, single-owner inference</dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-muted-foreground">Search</dt>
+                  <dd>EmbeddingGemma &amp; pgvector</dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-muted-foreground">Transcription</dt>
+                  <dd>Whisper</dd>
+                </div>
+              </dl>
+              {healthError && (
+                <p className="text-sm break-words text-destructive">
+                  {healthError}
+                </p>
+              )}
+            </DialogContent>
+          </Dialog>
 
           <div className="h-4 w-px bg-border/80" />
 

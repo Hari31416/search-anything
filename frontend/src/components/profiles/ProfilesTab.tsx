@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Plus, RefreshCw, AlertCircle, Info } from 'lucide-react'
+import { Plus, RefreshCw, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ProfileCard } from '@/components/profiles/ProfileCard'
 import { ProfileEditorModal } from '@/components/profiles/ProfileEditorModal'
@@ -55,12 +55,11 @@ export function ProfilesTab() {
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-xl font-bold tracking-tight text-foreground">
+          <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
             Ingestion Profiles
           </h2>
-          <p className="text-xs text-muted-foreground">
-            Configure segmentation limits, audio/video windowing, sampling FPS,
-            and OCR settings.
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+            Choose how your files are prepared for search.
           </p>
         </div>
 
@@ -82,22 +81,6 @@ export function ProfilesTab() {
             <Plus className="size-3.5" />
             New Profile
           </Button>
-        </div>
-      </div>
-
-      <div className="flex gap-2.5 rounded-xl border border-border/80 bg-muted/20 p-4 text-xs text-muted-foreground">
-        <Info className="mt-0.5 size-4 shrink-0 text-primary" />
-        <div className="space-y-1">
-          <p className="font-semibold text-foreground">
-            Saved Profile Revisions vs. Asset Snapshot
-          </p>
-          <p>
-            Uploads always index content using the latest revision of the{' '}
-            <code>automatic</code> profile. Saving a new profile revision does
-            not alter already-indexed assets; to apply a new configuration,
-            navigate to the Library and click <strong>Reprocess</strong> on
-            target assets.
-          </p>
         </div>
       </div>
 
@@ -123,7 +106,7 @@ export function ProfilesTab() {
           first ingestion profile.
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-2">
           {profiles.map((profile) => (
             <ProfileCard
               key={profile.id}

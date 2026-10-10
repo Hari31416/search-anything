@@ -11,7 +11,6 @@ import {
   Music,
   FileText,
   Layers,
-  HardDrive,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { UploadDropzone } from '@/components/library/UploadDropzone'
@@ -180,12 +179,11 @@ export function LibraryTab() {
       {/* Top Header & Actions */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-xl font-bold tracking-tight text-foreground">
+          <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
             Asset Library
           </h2>
-          <p className="text-xs text-muted-foreground">
-            Visual media collection indexed with local embeddings, Whisper, and
-            OCR.
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+            Browse and search your images, videos, audio, and documents.
           </p>
         </div>
 
@@ -214,79 +212,17 @@ export function LibraryTab() {
         </div>
       </div>
 
-      {/* Summary Stats Overview */}
       {assets.length > 0 && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
-          <div className="flex items-center gap-3 rounded-2xl border border-border/70 bg-card p-3 shadow-2xs">
-            <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <Layers className="size-5" />
-            </div>
-            <div>
-              <p className="text-[11px] font-medium text-muted-foreground">
-                Total Assets
-              </p>
-              <p className="text-base font-bold text-foreground">
-                {stats.total}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 rounded-2xl border border-border/70 bg-card p-3 shadow-2xs">
-            <div className="flex size-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-500">
-              <ImageIcon className="size-5" />
-            </div>
-            <div>
-              <p className="text-[11px] font-medium text-muted-foreground">
-                Images
-              </p>
-              <p className="text-base font-bold text-foreground">
-                {stats.images}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 rounded-2xl border border-border/70 bg-card p-3 shadow-2xs">
-            <div className="flex size-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-500">
-              <Video className="size-5" />
-            </div>
-            <div>
-              <p className="text-[11px] font-medium text-muted-foreground">
-                Videos
-              </p>
-              <p className="text-base font-bold text-foreground">
-                {stats.videos}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 rounded-2xl border border-border/70 bg-card p-3 shadow-2xs">
-            <div className="flex size-10 items-center justify-center rounded-xl bg-sky-500/10 text-sky-500">
-              <Music className="size-5" />
-            </div>
-            <div>
-              <p className="text-[11px] font-medium text-muted-foreground">
-                Audio
-              </p>
-              <p className="text-base font-bold text-foreground">
-                {stats.audio}
-              </p>
-            </div>
-          </div>
-
-          <div className="col-span-2 flex items-center gap-3 rounded-2xl border border-border/70 bg-card p-3 shadow-2xs sm:col-span-1">
-            <div className="flex size-10 items-center justify-center rounded-xl bg-sky-500/10 text-sky-500">
-              <HardDrive className="size-5" />
-            </div>
-            <div>
-              <p className="text-[11px] font-medium text-muted-foreground">
-                Storage Used
-              </p>
-              <p className="font-mono text-base font-bold text-foreground">
-                {formatBytes(stats.totalBytes)}
-              </p>
-            </div>
-          </div>
-        </div>
+        <p
+          className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground"
+          aria-label="Library summary"
+        >
+          <span className="font-medium text-foreground">
+            {stats.total} assets
+          </span>
+          <span aria-hidden="true">·</span>
+          <span>{formatBytes(stats.totalBytes)} stored</span>
+        </p>
       )}
 
       {/* Uploader Section */}
@@ -304,86 +240,74 @@ export function LibraryTab() {
       )}
 
       {/* Filter and View Controls Bar */}
-      <div className="flex flex-col gap-3 rounded-2xl border border-border/80 bg-card/60 p-3 shadow-2xs backdrop-blur-xs sm:flex-row sm:items-center sm:justify-between">
-        {/* Category Filter Tabs */}
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => setCategoryFilter('all')}
-            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-all ${
-              categoryFilter === 'all'
-                ? 'bg-primary text-primary-foreground shadow-2xs'
-                : 'border border-border/80 bg-muted/30 text-muted-foreground hover:bg-muted hover:text-foreground'
-            }`}
-          >
-            <Layers className="size-3.5" />
-            <span>All ({stats.total})</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setCategoryFilter('image')}
-            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-all ${
-              categoryFilter === 'image'
-                ? 'bg-primary text-primary-foreground shadow-2xs'
-                : 'border border-border/80 bg-muted/30 text-muted-foreground hover:bg-muted hover:text-foreground'
-            }`}
-          >
-            <ImageIcon className="size-3.5" />
-            <span>Images ({stats.images})</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setCategoryFilter('video')}
-            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-all ${
-              categoryFilter === 'video'
-                ? 'bg-primary text-primary-foreground shadow-2xs'
-                : 'border border-border/80 bg-muted/30 text-muted-foreground hover:bg-muted hover:text-foreground'
-            }`}
-          >
-            <Video className="size-3.5" />
-            <span>Videos ({stats.videos})</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setCategoryFilter('audio')}
-            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-all ${
-              categoryFilter === 'audio'
-                ? 'bg-primary text-primary-foreground shadow-2xs'
-                : 'border border-border/80 bg-muted/30 text-muted-foreground hover:bg-muted hover:text-foreground'
-            }`}
-          >
-            <Music className="size-3.5" />
-            <span>Audio ({stats.audio})</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setCategoryFilter('document')}
-            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-all ${
-              categoryFilter === 'document'
-                ? 'bg-primary text-primary-foreground shadow-2xs'
-                : 'border border-border/80 bg-muted/30 text-muted-foreground hover:bg-muted hover:text-foreground'
-            }`}
-          >
-            <FileText className="size-3.5" />
-            <span>Documents ({stats.documents})</span>
-          </button>
+      <div className="flex min-w-0 flex-col gap-4 border-b border-border pb-4 xl:flex-row xl:items-center xl:justify-between">
+        <div
+          className="flex min-w-0 [scrollbar-width:none] items-center gap-1 overflow-x-auto pb-1 [&::-webkit-scrollbar]:hidden"
+          role="group"
+          aria-label="Filter by media type"
+        >
+          {(
+            [
+              { value: 'all', label: 'All', count: stats.total, icon: Layers },
+              {
+                value: 'image',
+                label: 'Images',
+                count: stats.images,
+                icon: ImageIcon,
+              },
+              {
+                value: 'video',
+                label: 'Videos',
+                count: stats.videos,
+                icon: Video,
+              },
+              {
+                value: 'audio',
+                label: 'Audio',
+                count: stats.audio,
+                icon: Music,
+              },
+              {
+                value: 'document',
+                label: 'Documents',
+                count: stats.documents,
+                icon: FileText,
+              },
+            ] as const
+          ).map(({ value, label, count, icon: Icon }) => (
+            <Button
+              key={value}
+              variant="ghost"
+              size="sm"
+              aria-pressed={categoryFilter === value}
+              onClick={() => setCategoryFilter(value)}
+              className={
+                categoryFilter === value
+                  ? 'bg-secondary text-foreground'
+                  : 'text-muted-foreground'
+              }
+            >
+              <Icon className="size-3.5" />
+              {label}
+              <span className="ml-1 text-xs text-muted-foreground tabular-nums">
+                {count}
+              </span>
+            </Button>
+          ))}
         </div>
 
         {/* Search & View Mode Switcher */}
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           {/* Quick Filename Search */}
-          <div className="relative flex items-center">
+          <div className="relative flex min-w-0 flex-1 items-center">
             <Search className="absolute left-2.5 size-3.5 text-muted-foreground" />
             <input
               type="text"
               placeholder="Filter by name..."
+              aria-label="Filter assets by name"
               value={searchFilter}
               onChange={(e) => setSearchFilter(e.target.value)}
-              className="h-8 w-36 rounded-xl border border-input bg-background pr-2.5 pl-8 text-xs text-foreground placeholder:text-muted-foreground focus:ring-1 focus:ring-ring focus:outline-none sm:w-48"
+              className="h-9 w-full rounded-xl border border-input bg-background pr-2.5 pl-8 text-sm text-foreground placeholder:text-muted-foreground focus:ring-1 focus:ring-ring focus:outline-none xl:w-48"
             />
           </div>
 
@@ -399,6 +323,8 @@ export function LibraryTab() {
                   ? 'bg-background text-foreground shadow-2xs'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
+              aria-label="Media Gallery View"
+              aria-pressed={viewMode === 'grid'}
               title="Media Gallery View"
             >
               <LayoutGrid className="size-3.5" />
@@ -415,6 +341,8 @@ export function LibraryTab() {
                   ? 'bg-background text-foreground shadow-2xs'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
+              aria-label="Table View"
+              aria-pressed={viewMode === 'table'}
               title="Table View"
             >
               <List className="size-3.5" />

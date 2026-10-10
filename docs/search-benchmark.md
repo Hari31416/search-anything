@@ -142,6 +142,23 @@ chunking and embedding changes require reprocessing the collection and
 refreshing affected query vectors. Reports record active generation/profile
 identity so results from different indexes can be distinguished.
 
+Use `--task audio` to evaluate only the audio queries. For an audio-only
+comparison, set `mode` to `semantic`, keep `representation_mode` as `separate`,
+and set every channel weight except `audio` to zero. This excludes transcript
+embeddings and lexical matches. The saved report includes the exact weights.
+With query vectors already cached, only PostgreSQL needs to run.
+
+```sh
+uv run python scripts/benchmark_search.py run --task audio --split all \
+  --config datasets/search-benchmark/configs/audio-only.json \
+  --output datasets/search-benchmark/results/audio-only-all.json
+```
+
+The initial comparison used the same 50 audio queries and active index.
+Audio-only Recall@5/10 was 48%/64%, versus 42%/58% for the default hybrid
+fusion. MRR@10 was 0.319 versus 0.302. These results concern this sound-caption
+subset; they do not establish the best configuration for spoken audio.
+
 Reports include Recall@5, Recall@10, MRR@10, binary nDCG@10, mean query latency,
 and per-query ranked IDs. Inspect per-task scores and individual regressions.
 Media-caption labels are incomplete: an unlabelled image or clip can still

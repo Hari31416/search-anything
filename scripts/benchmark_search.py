@@ -345,7 +345,13 @@ async def query_vector(query: str, settings: Settings) -> list[float]:
         await writer.wait_closed()
 
 
-async def run(root: Path, output: Path, split: str, config_path: Path | None) -> None:
+async def run(
+    root: Path,
+    output: Path,
+    split: str,
+    config_path: Path | None,
+    task: str | None = None,
+) -> None:
     from search_anything.api import SearchRequest
 
     manifest, state = load_state(root)
@@ -365,7 +371,12 @@ async def run(root: Path, output: Path, split: str, config_path: Path | None) ->
     options = dict(mode="hybrid", candidate_limit=60, representation_mode="separate")
     options.update(config)
     options = SearchRequest(query="benchmark", **options).model_dump(include=allowed)
-    queries = [q for q in manifest["queries"] if split == "all" or q["split"] == split]
+    queries = [
+        q
+        for q in manifest["queries"]
+        if (split == "all" or q["split"] == split)
+        and (task is None or q["task"] == task)
+    ]
     cache_path = root / "query-vectors.json"
     identity = dict(
         model=MODEL_ID,
@@ -489,6 +500,7 @@ async def run(root: Path, output: Path, split: str, config_path: Path | None) ->
             retrieval_source_sha256=digest(Path(inspect.getfile(search_workspace))),
             config=options,
             split=split,
+            task=task,
             encoding_seconds=encoding_seconds,
             retrieval_seconds=elapsed,
             summary=summary,
@@ -512,10 +524,11 @@ if __name__ == "__main__":
     indexing.add_argument("--max-seconds", type=int, default=2700)
     running = commands.add_parser("run")
     running.add_argument("--split", choices=["dev", "test", "all"], default="dev")
+    running.add_argument("--task", choices=["text", "image", "audio", "video"])
     running.add_argument("--config", type=Path)
     running.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.command == "index":
         asyncio.run(index(args.root, args.base_url, args.pilot, args.max_seconds))
     else:
-        asyncio.run(run(args.root, args.output, args.split, args.config))
+        asyncio.run(run(args.root, args.output, args.split, args.config, args.task))

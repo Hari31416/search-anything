@@ -40,6 +40,7 @@ export function SearchResultGridCard({
   const api = useWorkspaceApi()
   const [imageError, setImageError] = React.useState(false)
   const [showCardText, setShowCardText] = React.useState<boolean | null>(null)
+  const [showAllMarkers, setShowAllMarkers] = React.useState(false)
   const mediaRef = React.useRef<HTMLMediaElement | null>(null)
 
   const contentUrl = api.getAssetContentUrl(result.asset_id)
@@ -54,7 +55,7 @@ export function SearchResultGridCard({
             (preview): preview is typeof preview & { start: number } =>
               preview.start !== null
           )
-          .slice(0, 4)
+          .slice(0, 6)
       : []
 
   const firstTimestamp = timeMarkers[0]?.start ?? null
@@ -62,16 +63,37 @@ export function SearchResultGridCard({
     firstTimestamp
   )
 
-  // Identify whether snippet is primarily transcript, OCR, or general text
-  const textRep = result.matches
-    .flatMap((m) => m.representations)
-    .find((r) => r.text?.trim())
-  const textKindLabel =
-    textRep?.kind === 'transcript'
+  const displayedMarkers = showAllMarkers
+    ? timeMarkers
+    : timeMarkers.slice(0, 2)
+  const remainingCount = timeMarkers.length - 2
+
+  // Extract OCR or transcript text representations across all matches
+  const allRepresentations = result.matches.flatMap((m) => m.representations)
+  const ocrRep = allRepresentations.find(
+    (r) => (r.kind === 'ocr' || r.channels?.includes('ocr')) && r.text?.trim()
+  )
+  const transcriptRep = allRepresentations.find(
+    (r) =>
+      (r.kind === 'transcript' || r.channels?.includes('transcript')) &&
+      r.text?.trim()
+  )
+  const textRep =
+    ocrRep ?? transcriptRep ?? allRepresentations.find((r) => r.text?.trim())
+
+  const snippetText = textRep?.text?.trim() ?? primarySnippet
+  const hasText = Boolean(snippetText)
+  const isOcr =
+    Boolean(ocrRep) ||
+    textRep?.kind === 'ocr' ||
+    textRep?.channels?.includes('ocr')
+
+  const textKindLabel = isOcr
+    ? 'OCR Text'
+    : textRep?.kind === 'transcript' ||
+        textRep?.channels?.includes('transcript')
       ? 'Transcript'
-      : textRep?.kind === 'ocr'
-        ? 'OCR Text'
-        : 'Matched Text'
+      : 'Matched Text'
 
   const asAsset: Asset = {
     id: result.asset_id,
@@ -123,17 +145,21 @@ export function SearchResultGridCard({
     }
   }
 
+  const formatExtension =
+    result.content_type.split('/')[1]?.replace(/^x-/, '').toUpperCase() ||
+    category.toUpperCase()
+
   return (
-    <div className="group relative flex flex-col overflow-hidden rounded-xl border border-border/80 bg-card shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
-      {/* Visual Media Canvas */}
+    <div className="group relative flex h-full flex-col justify-between overflow-hidden rounded-xl border border-border/80 bg-card shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
+      {/* Visual Media Canvas: flex-1 allows image to expand and fill available row height */}
       <div
-        className="relative flex aspect-16/10 w-full cursor-pointer items-center justify-center overflow-hidden bg-muted/40"
+        className="relative flex min-h-[175px] w-full flex-1 cursor-pointer items-center justify-center overflow-hidden bg-muted/40"
         onClick={() =>
           onPreviewAsset(asAsset, activeTimestamp ?? firstTimestamp)
         }
       >
         {category === 'image' && !imageError ? (
-          <div className="relative h-full w-full overflow-hidden bg-black/5 dark:bg-black/30">
+          <div className="relative flex h-full w-full items-center justify-center overflow-hidden bg-black/5 dark:bg-black/30">
             <img
               src={contentUrl}
               alt={result.filename}
@@ -145,7 +171,7 @@ export function SearchResultGridCard({
           </div>
         ) : category === 'video' ? (
           <div
-            className="relative h-full w-full bg-black"
+            className="relative flex h-full w-full bg-black"
             onClick={(e) => e.stopPropagation()}
           >
             <video
@@ -245,58 +271,56 @@ export function SearchResultGridCard({
         </div>
       </div>
 
-      {/* Card Content & Metadata */}
-      <div className="space-y-2.5 p-3">
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between gap-2">
-            <h4
+      {/* Card Content & Metadata: pinned to the bottom of the card with clean spacing */}
+      <div className="flex shrink-0 flex-col gap-2 border-t border-border/50 bg-card p-3">
+        <div className="flex items-center justify-between gap-2">
+          <h4
+            onClick={() =>
+              onPreviewAsset(asAsset, activeTimestamp ?? firstTimestamp)
+            }
+            title={result.filename}
+            className="cursor-pointer truncate text-xs font-semibold text-foreground transition-colors hover:text-primary"
+          >
+            {result.filename}
+          </h4>
+          {hasText && (
+            <button
+              type="button"
               onClick={() =>
-                onPreviewAsset(asAsset, activeTimestamp ?? firstTimestamp)
+                setShowCardText((prev) =>
+                  prev === null ? !showMediaText : !prev
+                )
               }
-              title={result.filename}
-              className="cursor-pointer truncate text-xs font-semibold text-foreground transition-colors hover:text-primary"
+              className="flex shrink-0 items-center gap-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:text-primary"
+              title={`${isTextVisible ? 'Hide' : 'Show'} ${textKindLabel}`}
             >
-              {result.filename}
-            </h4>
-            {primarySnippet && (
-              <button
-                type="button"
-                onClick={() =>
-                  setShowCardText((prev) =>
-                    prev === null ? !showMediaText : !prev
-                  )
-                }
-                className="flex shrink-0 items-center gap-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:text-primary"
-                title={`${isTextVisible ? 'Hide' : 'Show'} ${textKindLabel}`}
-              >
-                <span>{textKindLabel}</span>
-                {isTextVisible ? (
-                  <ChevronUp className="size-2.5" />
-                ) : (
-                  <ChevronDown className="size-2.5" />
-                )}
-              </button>
-            )}
-          </div>
-
-          {/* Matched Snippet (OCR / Speech transcript / text) with query highlights */}
-          {primarySnippet && isTextVisible ? (
-            <div className="animate-in rounded-lg border border-border/60 bg-muted/30 p-2 text-[11px] leading-relaxed text-muted-foreground duration-150 fade-in-50 select-text">
-              <span className="mb-0.5 block text-[9px] font-bold tracking-wider text-muted-foreground/80 uppercase">
-                {textKindLabel}
-              </span>
-              &ldquo;
-              <HighlightedText text={primarySnippet} query={searchQuery} />
-              &rdquo;
-            </div>
-          ) : null}
+              <span>{textKindLabel}</span>
+              {isTextVisible ? (
+                <ChevronUp className="size-2.5" />
+              ) : (
+                <ChevronDown className="size-2.5" />
+              )}
+            </button>
+          )}
         </div>
 
-        {/* Polished Temporal Timestamps (for video and audio matches) */}
-        {timeMarkers.length > 0 && (
-          <div role="group" aria-label="Matching moments" className="space-y-1">
-            <div className="flex flex-wrap gap-1">
-              {timeMarkers.map((m, idx) => {
+        {/* Matched Snippet (OCR / Speech transcript / text) with query highlights */}
+        {hasText && isTextVisible && snippetText ? (
+          <div className="animate-in rounded-lg border border-border/60 bg-muted/30 p-2 text-[11px] leading-relaxed text-muted-foreground duration-150 fade-in-50 select-text">
+            <span className="mb-0.5 block text-[9px] font-bold tracking-wider text-muted-foreground/80 uppercase">
+              {textKindLabel}
+            </span>
+            &ldquo;
+            <HighlightedText text={snippetText} query={searchQuery} />
+            &rdquo;
+          </div>
+        ) : null}
+
+        {/* Secondary Row: Temporal Timestamps for Video/Audio OR Metadata & OCR Toggle for Images */}
+        {timeMarkers.length > 0 ? (
+          <div role="group" aria-label="Matching moments" className="pt-0.5">
+            <div className="flex flex-wrap items-center gap-1">
+              {displayedMarkers.map((m, idx) => {
                 const isActive = activeTimestamp === m.start
                 return (
                   <button
@@ -323,7 +347,74 @@ export function SearchResultGridCard({
                   </button>
                 )
               })}
+              {!showAllMarkers && remainingCount > 0 ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setShowAllMarkers(true)
+                  }}
+                  className="inline-flex items-center rounded-md border border-border/70 bg-secondary/60 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted-foreground transition-all duration-150 hover:border-primary/40 hover:bg-secondary hover:text-foreground"
+                  title={`Show ${remainingCount} more moments`}
+                >
+                  +{remainingCount}
+                </button>
+              ) : showAllMarkers && remainingCount > 0 ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setShowAllMarkers(false)
+                  }}
+                  className="inline-flex items-center rounded-md border border-border/70 bg-secondary/60 px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground transition-all duration-150 hover:bg-secondary hover:text-foreground"
+                  title="Show fewer moments"
+                >
+                  Less
+                </button>
+              ) : null}
             </div>
+          </div>
+        ) : category === 'image' ? (
+          <div className="flex items-center justify-between gap-1.5 pt-0.5">
+            <div className="flex items-center gap-1.5">
+              {hasText && isOcr ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setShowCardText((prev) =>
+                      prev === null ? !showMediaText : !prev
+                    )
+                  }
+                  className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-medium transition-all duration-150 ${
+                    isTextVisible
+                      ? 'border border-primary/60 bg-primary/20 font-semibold text-primary'
+                      : 'border border-border/70 bg-secondary/70 text-secondary-foreground hover:border-primary/40 hover:text-foreground'
+                  }`}
+                  title={`${isTextVisible ? 'Hide' : 'View'} OCR text`}
+                >
+                  <FileText className="size-2.5 text-primary" />
+                  <span>{isTextVisible ? 'Hide OCR' : 'OCR Text'}</span>
+                </button>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
+                  <ImageIcon className="size-2.5" />
+                  <span>Visual Match</span>
+                </span>
+              )}
+            </div>
+            <span className="font-mono text-[10px] font-semibold text-muted-foreground">
+              {formatExtension}
+            </span>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-1.5 pt-0.5">
+            <span className="inline-flex items-center gap-1 rounded-md border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[10px] font-medium text-sky-400">
+              <FileText className="size-2.5" />
+              <span>Document Match</span>
+            </span>
+            <span className="font-mono text-[10px] font-semibold text-muted-foreground">
+              {formatExtension}
+            </span>
           </div>
         )}
       </div>

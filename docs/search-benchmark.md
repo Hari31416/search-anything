@@ -1,5 +1,10 @@
 # Local search regression benchmark
 
+Fixed-model retrieval experiments from 2026-10-11 are recorded in
+[the experiment report](retrieval-experiments-2026-10-11.md), including individual
+query gains and regressions, paired uncertainty, runtime and storage. Production
+defaults remain unchanged.
+
 This collection measures changes to Search Anything. It uses four retrieval
 datasets included in MMEB-V3, with a smaller, frozen candidate collection.
 Scores are not comparable to the MMEB leaderboard.

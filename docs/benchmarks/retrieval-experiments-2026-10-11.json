@@ -1,0 +1,1789 @@
+{
+  "created_at": "2026-10-11T04:16:56.408380+00:00",
+  "experiment_source_sha256": "b1305bf67def7b5aacc13031d6e510b1f115d939fb6583bb8e63117a1ad35f4a",
+  "split": "dev",
+  "seed": 20261011,
+  "variants": {
+    "baseline": {
+      "audio": {
+        "recall@5": 0.43333333333333335,
+        "recall@10": 0.5666666666666667,
+        "mrr@10": 0.2965608465608466,
+        "ndcg@10": 0.3597442203420178,
+        "queries": 30,
+        "ranking_seconds": 0.10003383393632248,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0,
+        "candidate_recall60": 0.9666666666666667,
+        "candidate_recall_full": 1.0,
+        "production_retrieval_seconds": 0.7483099210076034
+      },
+      "image": {
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "mrr@10": 0.9055555555555556,
+        "ndcg@10": 0.9297596420238124,
+        "queries": 30,
+        "ranking_seconds": 0.02078654192155227,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0,
+        "candidate_recall60": 1.0,
+        "candidate_recall_full": 1.0,
+        "production_retrieval_seconds": 0.9302284577861428
+      },
+      "text": {
+        "recall@5": 0.9666666666666667,
+        "recall@10": 0.9666666666666667,
+        "mrr@10": 0.9277777777777778,
+        "ndcg@10": 0.937697658452382,
+        "queries": 30,
+        "ranking_seconds": 0.019237833912484348,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0,
+        "candidate_recall60": 0.9666666666666667,
+        "candidate_recall_full": 1.0,
+        "production_retrieval_seconds": 2.030681082920637
+      },
+      "video": {
+        "recall@5": 0.9,
+        "recall@10": 0.9,
+        "mrr@10": 0.8,
+        "ndcg@10": 0.8251380792287053,
+        "queries": 30,
+        "ranking_seconds": 0.021855499886441976,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0,
+        "candidate_recall60": 1.0,
+        "candidate_recall_full": 1.0,
+        "production_retrieval_seconds": 1.2203659629449248
+      },
+      "speech": {
+        "recall@5": 0.8333333333333334,
+        "recall@10": 0.8333333333333334,
+        "mrr@10": 0.6316666666666667,
+        "ndcg@10": 0.6793484651327166,
+        "queries": 30,
+        "ranking_seconds": 0.047651499800849706,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0,
+        "candidate_recall60": 1.0,
+        "candidate_recall_full": 1.0,
+        "production_retrieval_seconds": 1.0794697017408907
+      },
+      "image_hard": {
+        "recall@5": 0.7333333333333333,
+        "recall@10": 0.8666666666666667,
+        "mrr@10": 0.5692460317460317,
+        "ndcg@10": 0.6415709958426288,
+        "queries": 30,
+        "ranking_seconds": 0.08148541685659438,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "contrast_pair",
+        "improved": 0,
+        "regressed": 0,
+        "candidate_recall60": 0.9666666666666667,
+        "candidate_recall_full": 1.0,
+        "production_retrieval_seconds": 0.7843545011128299
+      },
+      "natural_speech": {
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "queries": 30,
+        "ranking_seconds": 0.03535546001512557,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0,
+        "candidate_recall60": 1.0,
+        "candidate_recall_full": 1.0,
+        "production_retrieval_seconds": 1.155295667995233
+      }
+    },
+    "rank_only": {
+      "audio": {
+        "recall@5": 0.36666666666666664,
+        "recall@10": 0.43333333333333335,
+        "mrr@10": 0.19448412698412698,
+        "ndcg@10": 0.2525717530815144,
+        "queries": 30,
+        "ranking_seconds": 0.03649700107052922,
+        "mrr_delta": -0.10207671957671957,
+        "mrr_delta_bootstrap95": [
+          -0.16176025132275135,
+          -0.04826719576719577
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 13
+      },
+      "image": {
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "mrr@10": 0.6122222222222222,
+        "ndcg@10": 0.7114360660174883,
+        "queries": 30,
+        "ranking_seconds": 0.021079170051962137,
+        "mrr_delta": -0.29333333333333333,
+        "mrr_delta_bootstrap95": [
+          -0.3766666666666667,
+          -0.21
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 21
+      },
+      "text": {
+        "recall@5": 0.9666666666666667,
+        "recall@10": 0.9666666666666667,
+        "mrr@10": 0.9277777777777778,
+        "ndcg@10": 0.937697658452382,
+        "queries": 30,
+        "ranking_seconds": 0.019267041061539203,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      },
+      "video": {
+        "recall@5": 0.9,
+        "recall@10": 0.9,
+        "mrr@10": 0.5666666666666667,
+        "ndcg@10": 0.6529052975620522,
+        "queries": 30,
+        "ranking_seconds": 0.021867415867745876,
+        "mrr_delta": -0.23333333333333334,
+        "mrr_delta_bootstrap95": [
+          -0.3333333333333333,
+          -0.11666666666666667
+        ],
+        "bootstrap_unit": "query",
+        "improved": 2,
+        "regressed": 17
+      },
+      "speech": {
+        "recall@5": 0.8333333333333334,
+        "recall@10": 0.8333333333333334,
+        "mrr@10": 0.6355555555555555,
+        "ndcg@10": 0.6822519985571368,
+        "queries": 30,
+        "ranking_seconds": 0.033829002000857145,
+        "mrr_delta": 0.00388888888888889,
+        "mrr_delta_bootstrap95": [
+          -0.013888888888888885,
+          0.026111111111111116
+        ],
+        "bootstrap_unit": "query",
+        "improved": 2,
+        "regressed": 2
+      },
+      "image_hard": {
+        "recall@5": 0.7333333333333333,
+        "recall@10": 0.8666666666666667,
+        "mrr@10": 0.5692460317460317,
+        "ndcg@10": 0.6415709958426288,
+        "queries": 30,
+        "ranking_seconds": 0.01786679186625406,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "contrast_pair",
+        "improved": 0,
+        "regressed": 0
+      },
+      "natural_speech": {
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "queries": 30,
+        "ranking_seconds": 0.03636153996922076,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      }
+    },
+    "cosine_linear": {
+      "audio": {
+        "recall@5": 0.4,
+        "recall@10": 0.5333333333333333,
+        "mrr@10": 0.28453703703703703,
+        "ndcg@10": 0.3423944105466621,
+        "queries": 30,
+        "ranking_seconds": 0.03755008080042899,
+        "mrr_delta": -0.012023809523809523,
+        "mrr_delta_bootstrap95": [
+          -0.02281911375661375,
+          -0.003306216931216928
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 6
+      },
+      "image": {
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "mrr@10": 0.9055555555555556,
+        "ndcg@10": 0.9297596420238124,
+        "queries": 30,
+        "ranking_seconds": 0.02115216519450769,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      },
+      "text": {
+        "recall@5": 0.9666666666666667,
+        "recall@10": 0.9666666666666667,
+        "mrr@10": 0.9277777777777778,
+        "ndcg@10": 0.937697658452382,
+        "queries": 30,
+        "ranking_seconds": 0.019191042927559465,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      },
+      "video": {
+        "recall@5": 0.9,
+        "recall@10": 0.9,
+        "mrr@10": 0.7861111111111111,
+        "ndcg@10": 0.8151465190786408,
+        "queries": 30,
+        "ranking_seconds": 0.022323628945741802,
+        "mrr_delta": -0.01388888888888889,
+        "mrr_delta_bootstrap95": [
+          -0.05,
+          0.008333333333333331
+        ],
+        "bootstrap_unit": "query",
+        "improved": 1,
+        "regressed": 1
+      },
+      "speech": {
+        "recall@5": 0.8333333333333334,
+        "recall@10": 0.8333333333333334,
+        "mrr@10": 0.6288888888888889,
+        "ndcg@10": 0.677037683735163,
+        "queries": 30,
+        "ranking_seconds": 0.05442516505718231,
+        "mrr_delta": -0.002777777777777777,
+        "mrr_delta_bootstrap95": [
+          -0.008333333333333331,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 1
+      },
+      "image_hard": {
+        "recall@5": 0.7333333333333333,
+        "recall@10": 0.8666666666666667,
+        "mrr@10": 0.5692460317460317,
+        "ndcg@10": 0.6415709958426288,
+        "queries": 30,
+        "ranking_seconds": 0.018506458029150963,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "contrast_pair",
+        "improved": 0,
+        "regressed": 0
+      },
+      "natural_speech": {
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "queries": 30,
+        "ranking_seconds": 0.0359229578753002,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      }
+    },
+    "cosine_sqrt": {
+      "audio": {
+        "recall@5": 0.36666666666666664,
+        "recall@10": 0.5333333333333333,
+        "mrr@10": 0.28055555555555556,
+        "ndcg@10": 0.33863325752068524,
+        "queries": 30,
+        "ranking_seconds": 0.10469104180810973,
+        "mrr_delta": -0.016005291005291005,
+        "mrr_delta_bootstrap95": [
+          -0.02902314814814814,
+          -0.005396825396825396
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 7
+      },
+      "image": {
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "mrr@10": 0.9055555555555556,
+        "ndcg@10": 0.9297596420238124,
+        "queries": 30,
+        "ranking_seconds": 0.02130608487641439,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      },
+      "text": {
+        "recall@5": 0.9666666666666667,
+        "recall@10": 0.9666666666666667,
+        "mrr@10": 0.9277777777777778,
+        "ndcg@10": 0.937697658452382,
+        "queries": 30,
+        "ranking_seconds": 0.019517249951604754,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      },
+      "video": {
+        "recall@5": 0.9,
+        "recall@10": 0.9,
+        "mrr@10": 0.7833333333333333,
+        "ndcg@10": 0.8130929753571458,
+        "queries": 30,
+        "ranking_seconds": 0.022305127989966422,
+        "mrr_delta": -0.01666666666666667,
+        "mrr_delta_bootstrap95": [
+          -0.055555555555555566,
+          0.008333333333333331
+        ],
+        "bootstrap_unit": "query",
+        "improved": 2,
+        "regressed": 2
+      },
+      "speech": {
+        "recall@5": 0.8333333333333334,
+        "recall@10": 0.8333333333333334,
+        "mrr@10": 0.6316666666666667,
+        "ndcg@10": 0.6793484651327166,
+        "queries": 30,
+        "ranking_seconds": 0.03898691409267485,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          -0.008333333333333331,
+          0.008333333333333331
+        ],
+        "bootstrap_unit": "query",
+        "improved": 1,
+        "regressed": 1
+      },
+      "image_hard": {
+        "recall@5": 0.7333333333333333,
+        "recall@10": 0.8666666666666667,
+        "mrr@10": 0.5692460317460317,
+        "ndcg@10": 0.6415709958426288,
+        "queries": 30,
+        "ranking_seconds": 0.018686374882236123,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "contrast_pair",
+        "improved": 0,
+        "regressed": 0
+      },
+      "natural_speech": {
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "queries": 30,
+        "ranking_seconds": 0.036387329921126366,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      }
+    },
+    "sum_rrf": {
+      "audio": {
+        "recall@5": 0.3,
+        "recall@10": 0.36666666666666664,
+        "mrr@10": 0.13846560846560846,
+        "ndcg@10": 0.193361940139359,
+        "queries": 30,
+        "ranking_seconds": 0.04152654204517603,
+        "mrr_delta": -0.1580952380952381,
+        "mrr_delta_bootstrap95": [
+          -0.27709523809523806,
+          -0.04798412698412697
+        ],
+        "bootstrap_unit": "query",
+        "improved": 2,
+        "regressed": 11
+      },
+      "image": {
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "mrr@10": 0.6372222222222222,
+        "ndcg@10": 0.7285750087865946,
+        "queries": 30,
+        "ranking_seconds": 0.02477483288384974,
+        "mrr_delta": -0.26833333333333337,
+        "mrr_delta_bootstrap95": [
+          -0.3738888888888889,
+          -0.16555555555555557
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 16
+      },
+      "text": {
+        "recall@5": 0.9666666666666667,
+        "recall@10": 0.9666666666666667,
+        "mrr@10": 0.9277777777777778,
+        "ndcg@10": 0.937697658452382,
+        "queries": 30,
+        "ranking_seconds": 0.022077333938796073,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      },
+      "video": {
+        "recall@5": 0.4,
+        "recall@10": 0.9,
+        "mrr@10": 0.3316931216931217,
+        "ndcg@10": 0.46004856690344204,
+        "queries": 30,
+        "ranking_seconds": 0.02447225002106279,
+        "mrr_delta": -0.46830687830687834,
+        "mrr_delta_bootstrap95": [
+          -0.5951593915343913,
+          -0.33447420634920627
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 21
+      },
+      "speech": {
+        "recall@5": 0.8333333333333334,
+        "recall@10": 0.9333333333333333,
+        "mrr@10": 0.6696296296296296,
+        "ndcg@10": 0.723817939824893,
+        "queries": 30,
+        "ranking_seconds": 0.03952895483234897,
+        "mrr_delta": 0.03796296296296296,
+        "mrr_delta_bootstrap95": [
+          -0.000374999999999997,
+          0.08444444444444446
+        ],
+        "bootstrap_unit": "query",
+        "improved": 7,
+        "regressed": 2
+      },
+      "image_hard": {
+        "recall@5": 0.7333333333333333,
+        "recall@10": 0.8666666666666667,
+        "mrr@10": 0.5692460317460317,
+        "ndcg@10": 0.6415709958426288,
+        "queries": 30,
+        "ranking_seconds": 0.021121000812854618,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "contrast_pair",
+        "improved": 0,
+        "regressed": 0
+      },
+      "natural_speech": {
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "queries": 30,
+        "ranking_seconds": 0.03944566799327731,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      }
+    },
+    "candidates_20": {
+      "audio": {
+        "recall@5": 0.43333333333333335,
+        "recall@10": 0.5666666666666667,
+        "mrr@10": 0.2965608465608466,
+        "ndcg@10": 0.3597442203420178,
+        "queries": 30,
+        "ranking_seconds": 0.017642748134676367,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      },
+      "image": {
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "mrr@10": 0.9055555555555556,
+        "ndcg@10": 0.9297596420238124,
+        "queries": 30,
+        "ranking_seconds": 0.01220458111492917,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      },
+      "text": {
+        "recall@5": 0.9666666666666667,
+        "recall@10": 0.9666666666666667,
+        "mrr@10": 0.9277777777777778,
+        "ndcg@10": 0.937697658452382,
+        "queries": 30,
+        "ranking_seconds": 0.008869292971212417,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      },
+      "video": {
+        "recall@5": 0.9,
+        "recall@10": 0.9,
+        "mrr@10": 0.8,
+        "ndcg@10": 0.8251380792287053,
+        "queries": 30,
+        "ranking_seconds": 0.01345066592330113,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      },
+      "speech": {
+        "recall@5": 0.8333333333333334,
+        "recall@10": 0.8333333333333334,
+        "mrr@10": 0.6316666666666667,
+        "ndcg@10": 0.6793484651327166,
+        "queries": 30,
+        "ranking_seconds": 0.017200501868501306,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      },
+      "image_hard": {
+        "recall@5": 0.7333333333333333,
+        "recall@10": 0.8666666666666667,
+        "mrr@10": 0.5692460317460317,
+        "ndcg@10": 0.6415709958426288,
+        "queries": 30,
+        "ranking_seconds": 0.010202919016592205,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "contrast_pair",
+        "improved": 0,
+        "regressed": 0
+      },
+      "natural_speech": {
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "queries": 30,
+        "ranking_seconds": 0.01754550088662654,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      }
+    },
+    "candidates_200": {
+      "audio": {
+        "recall@5": 0.4,
+        "recall@10": 0.5666666666666667,
+        "mrr@10": 0.29544973544973546,
+        "ndcg@10": 0.3587226996711338,
+        "queries": 30,
+        "ranking_seconds": 0.0690692060161382,
+        "mrr_delta": -0.0011111111111111118,
+        "mrr_delta_bootstrap95": [
+          -0.0033333333333333353,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 1
+      },
+      "image": {
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "mrr@10": 0.9055555555555556,
+        "ndcg@10": 0.9297596420238124,
+        "queries": 30,
+        "ranking_seconds": 0.13469083607196808,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      },
+      "text": {
+        "recall@5": 0.9666666666666667,
+        "recall@10": 0.9666666666666667,
+        "mrr@10": 0.9277777777777778,
+        "ndcg@10": 0.937697658452382,
+        "queries": 30,
+        "ranking_seconds": 0.0687287962064147,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      },
+      "video": {
+        "recall@5": 0.9,
+        "recall@10": 0.9,
+        "mrr@10": 0.8,
+        "ndcg@10": 0.8251380792287053,
+        "queries": 30,
+        "ranking_seconds": 0.043527623114641756,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      },
+      "speech": {
+        "recall@5": 0.8333333333333334,
+        "recall@10": 0.8333333333333334,
+        "mrr@10": 0.6316666666666667,
+        "ndcg@10": 0.6793484651327166,
+        "queries": 30,
+        "ranking_seconds": 0.11777845595497638,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      },
+      "image_hard": {
+        "recall@5": 0.7333333333333333,
+        "recall@10": 0.8666666666666667,
+        "mrr@10": 0.5692460317460317,
+        "ndcg@10": 0.6415709958426288,
+        "queries": 30,
+        "ranking_seconds": 0.03192229400156066,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "contrast_pair",
+        "improved": 0,
+        "regressed": 0
+      },
+      "natural_speech": {
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "queries": 30,
+        "ranking_seconds": 0.19247083587106317,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      }
+    },
+    "lexical_weight_2": {
+      "audio": {
+        "recall@5": 0.43333333333333335,
+        "recall@10": 0.5666666666666667,
+        "mrr@10": 0.2965608465608466,
+        "ndcg@10": 0.3597442203420178,
+        "queries": 30,
+        "ranking_seconds": 0.03585816692793742,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      },
+      "image": {
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "mrr@10": 0.9055555555555556,
+        "ndcg@10": 0.9297596420238124,
+        "queries": 30,
+        "ranking_seconds": 0.09712429222417995,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      },
+      "text": {
+        "recall@5": 0.9666666666666667,
+        "recall@10": 0.9666666666666667,
+        "mrr@10": 0.9277777777777778,
+        "ndcg@10": 0.937697658452382,
+        "queries": 30,
+        "ranking_seconds": 0.020192500844132155,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      },
+      "video": {
+        "recall@5": 0.9,
+        "recall@10": 0.9,
+        "mrr@10": 0.8,
+        "ndcg@10": 0.8251380792287053,
+        "queries": 30,
+        "ranking_seconds": 0.033466585155110806,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      },
+      "speech": {
+        "recall@5": 0.8333333333333334,
+        "recall@10": 0.8333333333333334,
+        "mrr@10": 0.6316666666666667,
+        "ndcg@10": 0.6793484651327166,
+        "queries": 30,
+        "ranking_seconds": 0.03440062521258369,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      },
+      "image_hard": {
+        "recall@5": 0.7333333333333333,
+        "recall@10": 0.8666666666666667,
+        "mrr@10": 0.5692460317460317,
+        "ndcg@10": 0.6415709958426288,
+        "queries": 30,
+        "ranking_seconds": 0.019364295934792608,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "contrast_pair",
+        "improved": 0,
+        "regressed": 0
+      },
+      "natural_speech": {
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "queries": 30,
+        "ranking_seconds": 0.0344305009348318,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      }
+    },
+    "bm25": {
+      "audio": {
+        "recall@5": 0.4,
+        "recall@10": 0.5666666666666667,
+        "mrr@10": 0.27096560846560847,
+        "ndcg@10": 0.33974238841552673,
+        "queries": 30,
+        "ranking_seconds": 0.06207004375755787,
+        "mrr_delta": -0.025595238095238095,
+        "mrr_delta_bootstrap95": [
+          -0.0633343253968254,
+          -0.0022222222222222235
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 5
+      },
+      "image": {
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "mrr@10": 0.9055555555555556,
+        "ndcg@10": 0.9297596420238124,
+        "queries": 30,
+        "ranking_seconds": 0.06275999912759289,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      },
+      "text": {
+        "recall@5": 0.775,
+        "recall@10": 0.8833333333333333,
+        "mrr@10": 0.6789285714285714,
+        "ndcg@10": 0.7290974360684609,
+        "queries": 30,
+        "ranking_seconds": 0.6105987479095347,
+        "mrr_delta": -0.24884920634920635,
+        "mrr_delta_bootstrap95": [
+          -0.375859126984127,
+          -0.125
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 11
+      },
+      "video": {
+        "recall@5": 0.9,
+        "recall@10": 0.9,
+        "mrr@10": 0.7205555555555555,
+        "ndcg@10": 0.7657392711055074,
+        "queries": 30,
+        "ranking_seconds": 0.11364804190816358,
+        "mrr_delta": -0.07944444444444444,
+        "mrr_delta_bootstrap95": [
+          -0.16111111111111112,
+          -0.016666666666666666
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 5
+      },
+      "speech": {
+        "recall@5": 0.75,
+        "recall@10": 0.8,
+        "mrr@10": 0.5694444444444444,
+        "ndcg@10": 0.6195199705557279,
+        "queries": 30,
+        "ranking_seconds": 0.09138583444291726,
+        "mrr_delta": -0.06222222222222222,
+        "mrr_delta_bootstrap95": [
+          -0.20058333333333328,
+          0.08055555555555556
+        ],
+        "bootstrap_unit": "query",
+        "improved": 7,
+        "regressed": 11
+      },
+      "image_hard": {
+        "recall@5": 0.7333333333333333,
+        "recall@10": 0.8666666666666667,
+        "mrr@10": 0.5692460317460317,
+        "ndcg@10": 0.6415709958426288,
+        "queries": 30,
+        "ranking_seconds": 0.04239879205124453,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "contrast_pair",
+        "improved": 0,
+        "regressed": 0
+      },
+      "natural_speech": {
+        "recall@5": 0.9666666666666667,
+        "recall@10": 1.0,
+        "mrr@10": 0.8894444444444445,
+        "ndcg@10": 0.9160533630511398,
+        "queries": 30,
+        "ranking_seconds": 0.16394671017769724,
+        "mrr_delta": -0.11055555555555556,
+        "mrr_delta_bootstrap95": [
+          -0.20944444444444446,
+          -0.030000000000000002
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 5
+      }
+    },
+    "transcript_weight_025": {
+      "audio": {
+        "recall@5": 0.43333333333333335,
+        "recall@10": 0.6,
+        "mrr@10": 0.30646825396825395,
+        "ndcg@10": 0.3757978263373096,
+        "queries": 30,
+        "ranking_seconds": 0.03625854291021824,
+        "mrr_delta": 0.009907407407407406,
+        "mrr_delta_bootstrap95": [
+          0.0013888888888888896,
+          0.02119047619047619
+        ],
+        "bootstrap_unit": "query",
+        "improved": 5,
+        "regressed": 0
+      },
+      "video": {
+        "recall@5": 0.9,
+        "recall@10": 0.9,
+        "mrr@10": 0.8,
+        "ndcg@10": 0.8251380792287053,
+        "queries": 30,
+        "ranking_seconds": 0.02228158200159669,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      },
+      "speech": {
+        "recall@5": 0.8,
+        "recall@10": 0.8666666666666667,
+        "mrr@10": 0.6208333333333333,
+        "ndcg@10": 0.678055543241413,
+        "queries": 30,
+        "ranking_seconds": 0.05320871598087251,
+        "mrr_delta": -0.010833333333333332,
+        "mrr_delta_bootstrap95": [
+          -0.07750694444444445,
+          0.05389583333333335
+        ],
+        "bootstrap_unit": "query",
+        "improved": 5,
+        "regressed": 5
+      },
+      "natural_speech": {
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "mrr@10": 0.9666666666666667,
+        "ndcg@10": 0.9753953169047639,
+        "queries": 30,
+        "ranking_seconds": 0.036542207875754684,
+        "mrr_delta": -0.03333333333333333,
+        "mrr_delta_bootstrap95": [
+          -0.08333333333333333,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 2
+      }
+    },
+    "quality_structural": {
+      "audio": {
+        "recall@5": 0.43333333333333335,
+        "recall@10": 0.6,
+        "mrr@10": 0.2998941798941799,
+        "ndcg@10": 0.3693797145526141,
+        "queries": 30,
+        "ranking_seconds": 0.03823420515982434,
+        "mrr_delta": 0.0033333333333333335,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.010000000000000002
+        ],
+        "bootstrap_unit": "query",
+        "improved": 1,
+        "regressed": 0
+      },
+      "video": {
+        "recall@5": 0.9,
+        "recall@10": 0.9,
+        "mrr@10": 0.8,
+        "ndcg@10": 0.8251380792287053,
+        "queries": 30,
+        "ranking_seconds": 0.022080456954427063,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      },
+      "speech": {
+        "recall@5": 0.8333333333333334,
+        "recall@10": 0.8333333333333334,
+        "mrr@10": 0.6316666666666667,
+        "ndcg@10": 0.6793484651327166,
+        "queries": 30,
+        "ranking_seconds": 0.040256166888866574,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      },
+      "natural_speech": {
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "queries": 30,
+        "ranking_seconds": 0.03980733308708295,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      }
+    },
+    "quality_ocr": {
+      "audio": {
+        "recall@5": 0.43333333333333335,
+        "recall@10": 0.5666666666666667,
+        "mrr@10": 0.2965608465608466,
+        "ndcg@10": 0.3597442203420178,
+        "queries": 30,
+        "ranking_seconds": 0.035901375755202025,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      },
+      "image": {
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "mrr@10": 0.9111111111111111,
+        "ndcg@10": 0.9341239671428611,
+        "queries": 30,
+        "ranking_seconds": 0.02233637316385284,
+        "mrr_delta": 0.005555555555555556,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.016666666666666666
+        ],
+        "bootstrap_unit": "query",
+        "improved": 1,
+        "regressed": 0
+      },
+      "text": {
+        "recall@5": 0.9666666666666667,
+        "recall@10": 0.9666666666666667,
+        "mrr@10": 0.9277777777777778,
+        "ndcg@10": 0.937697658452382,
+        "queries": 30,
+        "ranking_seconds": 0.019455501053016633,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      },
+      "video": {
+        "recall@5": 0.9,
+        "recall@10": 0.9,
+        "mrr@10": 0.8666666666666667,
+        "ndcg@10": 0.8753953169047638,
+        "queries": 30,
+        "ranking_seconds": 0.08787295682122931,
+        "mrr_delta": 0.06666666666666667,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.15
+        ],
+        "bootstrap_unit": "query",
+        "improved": 3,
+        "regressed": 0
+      },
+      "speech": {
+        "recall@5": 0.8333333333333334,
+        "recall@10": 0.8333333333333334,
+        "mrr@10": 0.6316666666666667,
+        "ndcg@10": 0.6793484651327166,
+        "queries": 30,
+        "ranking_seconds": 0.03426637384109199,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      },
+      "image_hard": {
+        "recall@5": 0.7333333333333333,
+        "recall@10": 0.8666666666666667,
+        "mrr@10": 0.5692460317460317,
+        "ndcg@10": 0.6415709958426288,
+        "queries": 30,
+        "ranking_seconds": 0.018344496958889067,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "contrast_pair",
+        "improved": 0,
+        "regressed": 0
+      },
+      "natural_speech": {
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "queries": 30,
+        "ranking_seconds": 0.03550404391717166,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      }
+    },
+    "quality_confidence": {
+      "audio": {
+        "recall@5": 0.43333333333333335,
+        "recall@10": 0.6,
+        "mrr@10": 0.3010978835978836,
+        "ndcg@10": 0.37065855521307856,
+        "queries": 30,
+        "ranking_seconds": 0.04137029411504045,
+        "mrr_delta": 0.0045370370370370365,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.012777777777777777
+        ],
+        "bootstrap_unit": "query",
+        "improved": 2,
+        "regressed": 0
+      },
+      "speech": {
+        "recall@5": 0.8333333333333334,
+        "recall@10": 0.8333333333333334,
+        "mrr@10": 0.6316666666666667,
+        "ndcg@10": 0.6793484651327166,
+        "queries": 30,
+        "ranking_seconds": 0.0481444566976279,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      },
+      "natural_speech": {
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "queries": 30,
+        "ranking_seconds": 0.08653208293253556,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 0
+      }
+    },
+    "image_only": {
+      "image": {
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "mrr@10": 0.9111111111111111,
+        "ndcg@10": 0.9341239671428611,
+        "queries": 30,
+        "ranking_seconds": 0.018757582758553326,
+        "mrr_delta": 0.005555555555555556,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.016666666666666666
+        ],
+        "bootstrap_unit": "query",
+        "improved": 1,
+        "regressed": 0
+      },
+      "video": {
+        "recall@5": 0.9,
+        "recall@10": 0.9,
+        "mrr@10": 0.8666666666666667,
+        "ndcg@10": 0.8753953169047638,
+        "queries": 30,
+        "ranking_seconds": 0.017772332881577313,
+        "mrr_delta": 0.06666666666666667,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.15
+        ],
+        "bootstrap_unit": "query",
+        "improved": 3,
+        "regressed": 0
+      },
+      "image_hard": {
+        "recall@5": 0.7333333333333333,
+        "recall@10": 0.8666666666666667,
+        "mrr@10": 0.5692460317460317,
+        "ndcg@10": 0.6415709958426288,
+        "queries": 30,
+        "ranking_seconds": 0.018577254202682525,
+        "mrr_delta": 0.0,
+        "mrr_delta_bootstrap95": [
+          0.0,
+          0.0
+        ],
+        "bootstrap_unit": "contrast_pair",
+        "improved": 0,
+        "regressed": 0
+      }
+    },
+    "audio_only": {
+      "audio": {
+        "recall@5": 0.43333333333333335,
+        "recall@10": 0.6,
+        "mrr@10": 0.30646825396825395,
+        "ndcg@10": 0.3757978263373096,
+        "queries": 30,
+        "ranking_seconds": 0.02165537327528,
+        "mrr_delta": 0.009907407407407406,
+        "mrr_delta_bootstrap95": [
+          0.0013888888888888896,
+          0.02119047619047619
+        ],
+        "bootstrap_unit": "query",
+        "improved": 5,
+        "regressed": 0
+      },
+      "video": {
+        "recall@5": 0.0,
+        "recall@10": 0.0,
+        "mrr@10": 0,
+        "ndcg@10": 0.0,
+        "queries": 30,
+        "ranking_seconds": 0.005477420112583786,
+        "mrr_delta": -0.8,
+        "mrr_delta_bootstrap95": [
+          -0.9166666666666666,
+          -0.6666666666666666
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 27
+      },
+      "speech": {
+        "recall@5": 0.8,
+        "recall@10": 0.8666666666666667,
+        "mrr@10": 0.6208333333333333,
+        "ndcg@10": 0.678055543241413,
+        "queries": 30,
+        "ranking_seconds": 0.022878789983224124,
+        "mrr_delta": -0.010833333333333332,
+        "mrr_delta_bootstrap95": [
+          -0.07750694444444445,
+          0.05389583333333335
+        ],
+        "bootstrap_unit": "query",
+        "improved": 5,
+        "regressed": 5
+      },
+      "natural_speech": {
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "mrr@10": 0.9666666666666667,
+        "ndcg@10": 0.9753953169047639,
+        "queries": 30,
+        "ranking_seconds": 0.022363045951351523,
+        "mrr_delta": -0.03333333333333333,
+        "mrr_delta_bootstrap95": [
+          -0.08333333333333333,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 2
+      }
+    },
+    "audio_15s": {
+      "audio": {
+        "recall@5": 0.4666666666666667,
+        "recall@10": 0.5333333333333333,
+        "mrr@10": 0.3061904761904762,
+        "ndcg@10": 0.3600575132427512,
+        "queries": 30,
+        "ranking_seconds": 0.3664999980246648,
+        "mrr_delta": 0.00962962962962963,
+        "mrr_delta_bootstrap95": [
+          -0.0377824074074074,
+          0.0796342592592593
+        ],
+        "bootstrap_unit": "query",
+        "improved": 2,
+        "regressed": 4
+      },
+      "speech": {
+        "recall@5": 0.85,
+        "recall@10": 0.8666666666666667,
+        "mrr@10": 0.6566666666666666,
+        "ndcg@10": 0.6992579724200568,
+        "queries": 30,
+        "ranking_seconds": 0.1973372920183465,
+        "mrr_delta": 0.025,
+        "mrr_delta_bootstrap95": [
+          -0.01388888888888889,
+          0.07777777777777777
+        ],
+        "bootstrap_unit": "query",
+        "improved": 2,
+        "regressed": 2
+      },
+      "natural_speech": {
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "mrr@10": 0.9833333333333333,
+        "ndcg@10": 0.9876976584523819,
+        "queries": 30,
+        "ranking_seconds": 0.4182269160519354,
+        "mrr_delta": -0.016666666666666666,
+        "mrr_delta_bootstrap95": [
+          -0.05,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 1
+      }
+    },
+    "audio_15s_only": {
+      "audio": {
+        "recall@5": 0.5,
+        "recall@10": 0.5333333333333333,
+        "mrr@10": 0.316984126984127,
+        "ndcg@10": 0.37017527570001635,
+        "queries": 30,
+        "ranking_seconds": 0.32648608495946974,
+        "mrr_delta": 0.020423280423280423,
+        "mrr_delta_bootstrap95": [
+          -0.05129629629629629,
+          0.10158928571428572
+        ],
+        "bootstrap_unit": "query",
+        "improved": 5,
+        "regressed": 5
+      },
+      "speech": {
+        "recall@5": 0.85,
+        "recall@10": 0.8666666666666667,
+        "mrr@10": 0.6566666666666666,
+        "ndcg@10": 0.6992579724200568,
+        "queries": 30,
+        "ranking_seconds": 0.16002067096997052,
+        "mrr_delta": 0.025,
+        "mrr_delta_bootstrap95": [
+          -0.01388888888888889,
+          0.07777777777777777
+        ],
+        "bootstrap_unit": "query",
+        "improved": 2,
+        "regressed": 2
+      },
+      "natural_speech": {
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "mrr@10": 0.9833333333333333,
+        "ndcg@10": 0.9876976584523819,
+        "queries": 30,
+        "ranking_seconds": 0.2528087497339584,
+        "mrr_delta": -0.016666666666666666,
+        "mrr_delta_bootstrap95": [
+          -0.05,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 1
+      }
+    },
+    "transcript_sentences": {
+      "audio": {
+        "recall@5": 0.43333333333333335,
+        "recall@10": 0.6,
+        "mrr@10": 0.29683862433862435,
+        "ndcg@10": 0.36709894513439667,
+        "queries": 30,
+        "ranking_seconds": 0.09814441611524671,
+        "mrr_delta": 0.00027777777777777864,
+        "mrr_delta_bootstrap95": [
+          -0.01055555555555555,
+          0.010006944444444471
+        ],
+        "bootstrap_unit": "query",
+        "improved": 3,
+        "regressed": 2
+      },
+      "speech": {
+        "recall@5": 0.8333333333333334,
+        "recall@10": 0.9666666666666667,
+        "mrr@10": 0.6748941798941799,
+        "ndcg@10": 0.7424714256103948,
+        "queries": 30,
+        "ranking_seconds": 0.2106359581812285,
+        "mrr_delta": 0.043227513227513226,
+        "mrr_delta_bootstrap95": [
+          -0.05277777777777778,
+          0.14616600529100532
+        ],
+        "bootstrap_unit": "query",
+        "improved": 9,
+        "regressed": 3
+      },
+      "natural_speech": {
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "mrr@10": 0.9833333333333333,
+        "ndcg@10": 0.9876976584523819,
+        "queries": 30,
+        "ranking_seconds": 0.5157245008740574,
+        "mrr_delta": -0.016666666666666666,
+        "mrr_delta_bootstrap95": [
+          -0.05,
+          0.0
+        ],
+        "bootstrap_unit": "query",
+        "improved": 0,
+        "regressed": 1
+      }
+    },
+    "image_crops_max": {
+      "image_hard": {
+        "recall@5": 0.8,
+        "recall@10": 0.9,
+        "mrr@10": 0.5902777777777778,
+        "ndcg@10": 0.6654132171453754,
+        "queries": 30,
+        "ranking_seconds": 0.4132085433229804,
+        "mrr_delta": 0.02103174603174603,
+        "mrr_delta_bootstrap95": [
+          -0.05694444444444446,
+          0.0976438492063493
+        ],
+        "bootstrap_unit": "contrast_pair",
+        "improved": 6,
+        "regressed": 6
+      }
+    },
+    "image_crops_mean": {
+      "image_hard": {
+        "recall@5": 0.7666666666666667,
+        "recall@10": 0.9,
+        "mrr@10": 0.5456349206349206,
+        "ndcg@10": 0.6310943042545085,
+        "queries": 30,
+        "ranking_seconds": 0.38054342078976333,
+        "mrr_delta": -0.02361111111111111,
+        "mrr_delta_bootstrap95": [
+          -0.09888888888888887,
+          0.04175000000000001
+        ],
+        "bootstrap_unit": "contrast_pair",
+        "improved": 4,
+        "regressed": 5
+      }
+    }
+  },
+  "artifacts": {
+    "search-benchmark": {
+      "snapshot_sha256": "75450795e5f8431a9dcbd04c7671ca82961df9e46d82beaa9696d95495e08535",
+      "index_identity": "99fa247c062d113f97b5cb7cfb697a808a6875641f8cf42cdaed3b73488358e5",
+      "manifest_sha256": "6c6df40b921c1bcec09df0dd1359cb68a8c7fd6c3f1ecda8093f911d5ee4ced5",
+      "embedding_identity": {
+        "model": "google/embeddinggemma-2",
+        "revision": "914f7f89142e33e77833254d9c9b90c3cef7303b",
+        "dimensions": 768,
+        "context_tokens": 8192,
+        "manifest": "6c6df40b921c1bcec09df0dd1359cb68a8c7fd6c3f1ecda8093f911d5ee4ced5"
+      },
+      "augmentation_sha256": "f3a22d186bbd0a1edd9c44514a3eec2113b77549307b10400458d7f17e197fec",
+      "augmentation_stats": {
+        "confidence": {
+          "seconds": 128.934010543162,
+          "assets": 100,
+          "vectors": 0
+        },
+        "transcript": {
+          "seconds": 6.344451211334672,
+          "assets": 100,
+          "vectors": 51
+        },
+        "audio": {
+          "seconds": 62.88070763129508,
+          "assets": 100,
+          "vectors": 220
+        }
+      },
+      "production_baseline_sha256": "1aa84c43a450252b7647b4dd68eb2e0069ac3eea174c3b25544d0a6ed0b48f59",
+      "production_retrieval_seconds": 5.033278000017162
+    },
+    "spoken-squad-benchmark": {
+      "snapshot_sha256": "c8e4d333f18c4d199617a90485d62ef968a5e1ec388cc4691c49bfe5bd331cc8",
+      "index_identity": "68401f9c6e1ac4c7581d5a0e9f0c97e9e83e764d45c784bc7f1477cf5dd349f7",
+      "manifest_sha256": "ed2b479cb43960fc0e712df152727871f4cbefefbb216a5498a289fc48067916",
+      "embedding_identity": {
+        "model": "google/embeddinggemma-2",
+        "revision": "914f7f89142e33e77833254d9c9b90c3cef7303b",
+        "dimensions": 768,
+        "context_tokens": 8192,
+        "manifest": "ed2b479cb43960fc0e712df152727871f4cbefefbb216a5498a289fc48067916"
+      },
+      "augmentation_sha256": "2fd11abe5a55b7c240fa0cb27c4643a45a97f7159cbc25d309534824d57b7e69",
+      "augmentation_stats": {
+        "confidence": {
+          "seconds": 38.72441933507798,
+          "assets": 100,
+          "vectors": 0
+        },
+        "transcript": {
+          "seconds": 4.023984422849026,
+          "assets": 100,
+          "vectors": 232
+        },
+        "audio": {
+          "seconds": 24.90507337555755,
+          "assets": 100,
+          "vectors": 135
+        }
+      },
+      "production_baseline_sha256": "8e5150273b3f4e85e38ab31c9cafb6015d09734314b82827da3750c2cfdbffe0",
+      "production_retrieval_seconds": 0.8036178750335239
+    },
+    "expanded-benchmark": {
+      "snapshot_sha256": "376e799b2b3b494cdfa1e45668ffc3e19ab43604cafff5140d56aaa7e4862806",
+      "index_identity": "bd4ad7cd138f6276681e13d5ed58751a6504711375f2201474f0fb70d3e49ec1",
+      "manifest_sha256": "7c1b98f6e729068a157c8768b5f7548588f221fd54e7b39165821bf081737c88",
+      "embedding_identity": {
+        "model": "google/embeddinggemma-2",
+        "revision": "914f7f89142e33e77833254d9c9b90c3cef7303b",
+        "dimensions": 768,
+        "context_tokens": 8192,
+        "manifest": "7c1b98f6e729068a157c8768b5f7548588f221fd54e7b39165821bf081737c88"
+      },
+      "augmentation_sha256": "23d5eb8d548e843575a17920725607f944a6e3b99787d92cd3b5e8d65d943d9e",
+      "augmentation_stats": {
+        "image": {
+          "seconds": 160.7740803724737,
+          "assets": 100,
+          "vectors": 400
+        },
+        "confidence": {
+          "seconds": 107.54078949976247,
+          "assets": 100,
+          "vectors": 0
+        },
+        "transcript": {
+          "seconds": 9.70546154724434,
+          "assets": 100,
+          "vectors": 605
+        },
+        "audio": {
+          "seconds": 75.84850300144171,
+          "assets": 100,
+          "vectors": 299
+        }
+      },
+      "production_baseline_sha256": "443ef14c6d207b6ac7b0e4c306663290ad5bd3252a01785ddeedeffd37d2571a",
+      "production_retrieval_seconds": 1.8116314999642782
+    }
+  },
+  "timing_note": "Replay seconds measure in-memory ranking only, not end-to-end search; capture seconds include exhaustive SQL retrieval. Compare production SQL timing separately.",
+  "limitations": [
+    "Small development samples; no held-out evaluation or selected production change.",
+    "Natural speech currently at ceiling with mostly unrelated distractors.",
+    "OCR extraction filter is inherited; no dedicated noisy OCR relevance benchmark.",
+    "Existing multiple-window and lexical retrieval remain enabled.",
+    "Alternative views add vector storage and model inference; no application index writes.",
+    "Whisper confidence is recomputed with original windows, and is a proxy for discarded original confidence values.",
+    "Bootstrap intervals are exploratory, without correction for testing multiple variants."
+  ],
+  "costs": {
+    "component_wall_seconds": {
+      "image": 168.7,
+      "confidence": 290.6,
+      "transcript": 52.2,
+      "audio": 229.9
+    },
+    "total_augmentation_wall_seconds": 741.4,
+    "storage": {
+      "all_dataset_allocated_bytes": 2517684224,
+      "postgres_allocated_bytes": 118571008,
+      "rustfs_allocated_bytes": 483618816,
+      "experiment_allocated_bytes": 223879168,
+      "total_allocated_bytes": 3119874048,
+      "note": "All local datasets and app data volumes; excludes model caches, container images and logs. Volumes measured with read-only mounts while services stopped."
+    },
+    "alternative_vector_payload_bytes": 5965824,
+    "production_retrieval_seconds": 7.6485273750149645
+  },
+  "production_changes_applied": false,
+  "per_query_sha256": "241852da1f3c277335c6f13528ef75c5ac2a3d2d41816cfc5d9d01a2348360da",
+  "retrieval_source_sha256": "9af92c7336461dc0dd01df9279711f8dd8f3a7363f7ece3971cdeb775cd1b6fd",
+  "alignment_audit": "Sentence passages use overlapping original ASR segment bounds. Cached vector inputs unchanged; all reported scores use corrected alignment."
+}

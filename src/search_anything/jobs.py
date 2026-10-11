@@ -38,6 +38,7 @@ async def claim_job(
     session_factory: async_sessionmaker,
     worker_id: str,
     lease_seconds: int,
+    stages: tuple[str, ...] | None = None,
 ) -> LeasedJob | None:
     now = datetime.now(timezone.utc)
     eligible = or_(
@@ -56,7 +57,11 @@ async def claim_job(
         async with session.begin():
             job = await session.scalar(
                 select(IngestionJob)
-                .where(eligible, IngestionJob.cancellation_requested.is_(False))
+                .where(
+                    eligible,
+                    IngestionJob.cancellation_requested.is_(False),
+                    *([IngestionJob.stage.in_(stages)] if stages is not None else []),
+                )
                 .order_by(
                     IngestionJob.priority,
                     IngestionJob.available_at,
@@ -215,8 +220,10 @@ async def fail_job(
     job: LeasedJob,
     error: Exception,
     retry_delay_seconds: float,
+    *,
+    retryable: bool = True,
 ) -> None:
-    retry = job.attempts < job.max_attempts
+    retry = retryable and job.attempts < job.max_attempts
     now = datetime.now(timezone.utc)
     async with session_factory() as session:
         async with session.begin():

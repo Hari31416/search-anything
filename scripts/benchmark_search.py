@@ -19,7 +19,7 @@ import time
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import httpx
 from sqlalchemy import select, text
@@ -27,7 +27,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from search_anything.db import make_engine
 from search_anything.embeddings import DIMENSIONS, MODEL_ID, MODEL_REVISION
-from search_anything.models import Asset, ProcessingGeneration
+from search_anything.models import Asset, ProcessingGeneration, IngestionJob
+from search_anything.events import notify_work
+from search_anything.search_requests import SearchRequest
 from search_anything.retrieval import search_workspace
 from search_anything.settings import Settings
 from search_anything.storage import S3ObjectStorage
@@ -329,18 +331,46 @@ async def index(root: Path, base_url: str, pilot: bool, max_seconds: int) -> Non
             )
 
 
-async def query_vector(query: str, settings: Settings) -> list[float]:
-    reader, writer = await asyncio.open_unix_connection(str(settings.model_socket_path))
+async def query_vector(
+    query: str, settings: Settings, workspace_id: UUID
+) -> list[float]:
+    """Ask the remote model owner through the durable queue, preserving vector caching."""
+    engine = make_engine(settings)
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    job_id = uuid4()
     try:
-        writer.write(json.dumps(dict(kind="text", text=query)).encode() + b"\n")
-        await writer.drain()
-        result = json.loads(await asyncio.wait_for(reader.readline(), timeout=180))
-        if "error" in result:
-            raise RuntimeError(str(result))
-        return result["vector"]
+        async with sessions() as session:
+            session.add(
+                IngestionJob(
+                    id=job_id,
+                    workspace_id=workspace_id,
+                    stage="search",
+                    priority=0,
+                    idempotency_key=f"benchmark-query:{job_id}",
+                    payload={
+                        "kind": "text",
+                        "query": query,
+                        "embedding_only": True,
+                        "options": SearchRequest(
+                            query=query, mode="semantic"
+                        ).model_dump(mode="json"),
+                    },
+                )
+            )
+            await notify_work(session)
+            await session.commit()
+        deadline = time.monotonic() + 600
+        while time.monotonic() < deadline:
+            async with sessions() as session:
+                job = await session.get(IngestionJob, job_id)
+                if job.status == "succeeded":
+                    return job.result["vector"]
+                if job.status == "failed":
+                    raise RuntimeError(job.error_message)
+            await asyncio.sleep(0.25)
+        raise TimeoutError(f"Query embedding job {job_id} is still pending")
     finally:
-        writer.close()
-        await writer.wait_closed()
+        await engine.dispose()
 
 
 async def run(
@@ -350,8 +380,6 @@ async def run(
     config_path: Path | None,
     task: str | None = None,
 ) -> None:
-    from search_anything.api import SearchRequest
-
     manifest, state = load_state(root)
     if not state:
         raise RuntimeError("Index the collection first")
@@ -394,7 +422,9 @@ async def run(
     encoding_started = time.monotonic()
     for i, query in enumerate(queries):
         if options["mode"] != "keyword" and query["id"] not in cache["vectors"]:
-            cache["vectors"][query["id"]] = await query_vector(query["text"], settings)
+            cache["vectors"][query["id"]] = await query_vector(
+                query["text"], settings, UUID(state["workspace_id"])
+            )
             save_json(cache_path, cache)
         if i % 25 == 0:
             LOG.info("Query vectors %d/%d", i + 1, len(queries))

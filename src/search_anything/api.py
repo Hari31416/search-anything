@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-import asyncio
-import base64
 import hashlib
+import io
 import json
 import logging
-import math
 import re
 import tempfile
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import Annotated, AsyncIterator, Any
+from typing import Annotated, AsyncIterator, Any, Literal
 from urllib.parse import quote
 from uuid import UUID, uuid4
 
@@ -36,7 +34,6 @@ from pydantic import (
     Field,
     ValidationError,
     field_validator,
-    model_validator,
 )
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -51,7 +48,8 @@ from search_anything.models import (
     Workspace,
 )
 from search_anything.ranges import UnsatisfiableRange, parse_range
-from search_anything.retrieval import DEFAULT_WEIGHTS, search_workspace
+from search_anything.search_requests import SearchRequest
+from search_anything.events import notify_work
 from search_anything.settings import Settings, get_settings
 from search_anything.storage import S3ObjectStorage
 
@@ -166,82 +164,21 @@ class CancelRequest(BaseModel):
     generation_id: UUID | None = None
 
 
-class SearchRequest(BaseModel):
-    query: str = Field(min_length=1, max_length=8192)
-    mode: str = Field(default="hybrid", pattern="^(hybrid|semantic|keyword)$")
-    representation_mode: str = Field(
-        default="separate", pattern="^(separate|combined|both)$"
-    )
-    limit: int = Field(default=10, ge=1, le=50)
-    candidate_limit: int = Field(default=60, ge=10, le=200)
-    content_types: list[str] | None = Field(default=None, max_length=32)
-    asset_ids: list[UUID] | None = Field(default=None, max_length=100)
-    weights: dict[str, float] | None = None
-    similarity_cutoffs: dict[str, float] | None = None
+class SearchSubmissionResponse(BaseModel):
+    id: UUID
+    status: Literal["queued"]
 
-    @field_validator("query")
-    @classmethod
-    def validate_query(cls, query: str) -> str:
-        clean = query.strip()
-        if not clean:
-            raise ValueError("search query cannot be empty")
-        return clean
 
-    @field_validator("weights")
-    @classmethod
-    def validate_weights(
-        cls, weights: dict[str, float] | None
-    ) -> dict[str, float] | None:
-        if weights is None:
-            return None
-        if set(weights) - set(DEFAULT_WEIGHTS):
-            raise ValueError("unknown search channel weight")
-        if any(
-            not math.isfinite(value) or not 0 <= value <= 10
-            for value in weights.values()
-        ):
-            raise ValueError(
-                "search channel weights must be finite and between 0 and 10"
-            )
-        return weights
+class SearchJobError(BaseModel):
+    code: str | None
+    message: str | None
 
-    @field_validator("similarity_cutoffs")
-    @classmethod
-    def validate_similarity_cutoffs(
-        cls, cutoffs: dict[str, float] | None
-    ) -> dict[str, float] | None:
-        if cutoffs is None:
-            return None
-        dense_channels = {
-            "text",
-            "transcript",
-            "ocr",
-            "image",
-            "audio",
-            "video",
-            "combined",
-        }
-        if set(cutoffs) - dense_channels:
-            raise ValueError(
-                "similarity cutoffs must use dense representation channels"
-            )
-        if any(
-            not math.isfinite(value) or not -1 <= value <= 1
-            for value in cutoffs.values()
-        ):
-            raise ValueError(
-                "cosine similarity cutoffs must be finite and between -1 and 1"
-            )
-        return cutoffs
 
-    @model_validator(mode="after")
-    def validate_limits_and_enabled_weights(self) -> "SearchRequest":
-        if self.candidate_limit < self.limit:
-            raise ValueError("candidate_limit must be at least limit")
-        resolved_weights = {**DEFAULT_WEIGHTS, **(self.weights or {})}
-        if not any(resolved_weights.values()):
-            raise ValueError("at least one search channel weight must be positive")
-        return self
+class SearchJobResponse(BaseModel):
+    id: UUID
+    status: Literal["queued", "retry", "running", "succeeded", "failed", "cancelled"]
+    result: dict[str, Any] | None
+    error: SearchJobError | None
 
 
 def _search_form_options(
@@ -564,6 +501,7 @@ def create_app(
                     await session.flush()
                     session.add(job)
                     await session.flush()
+                    await notify_work(session)
             except Exception:
                 await request.app.state.storage.delete_object(object_key)
                 raise
@@ -685,82 +623,90 @@ def create_app(
             latest.setdefault(profile.name, profile)
         return [ProfileResponse.model_validate(profile) for profile in latest.values()]
 
-    async def local_query(payload: dict[str, Any]) -> dict[str, Any]:
-        socket_path = settings.model_socket_path
-        try:
-            reader, writer = await asyncio.wait_for(
-                asyncio.open_unix_connection(str(socket_path)), timeout=2
+    async def enqueue_search(
+        request: Request,
+        session: AsyncSession,
+        options: SearchRequest,
+        *,
+        kind: str = "text",
+        query: str | None = None,
+        content: bytes | None = None,
+        content_type: str = "application/octet-stream",
+        filename: str | None = None,
+    ) -> dict[str, Any]:
+        job_id = uuid4()
+        key = None
+        if content is not None:
+            key = f"queries/{request.state.workspace_id}/{job_id}"
+            await storage.put_file(
+                key,
+                io.BytesIO(content),
+                content_type,
+                hashlib.sha256(content).hexdigest(),
             )
-        except (OSError, asyncio.TimeoutError) as error:
-            raise HTTPException(
-                status_code=503,
-                detail="local model owner is unavailable; start the worker",
-            ) from error
+        payload = {
+            "options": options.model_dump(mode="json"),
+            "kind": kind,
+            "query": options.query if query is None else query,
+            "storage_key": key,
+            "content_type": content_type,
+            "filename": filename,
+        }
         try:
-            writer.write(json.dumps(payload, separators=(",", ":")).encode() + b"\n")
-            await writer.drain()
-            response_line = await asyncio.wait_for(reader.readline(), timeout=120)
-        except asyncio.TimeoutError as error:
-            raise HTTPException(
-                status_code=504, detail="local query inference timed out"
-            ) from error
-        finally:
-            writer.close()
-            await writer.wait_closed()
-        try:
-            response = json.loads(response_line)
-        except (json.JSONDecodeError, UnicodeDecodeError) as error:
-            raise HTTPException(
-                status_code=503, detail="invalid worker response"
-            ) from error
-        if "error" in response:
-            status_code = (
-                422
-                if response["error"]
-                in {"ContextLimitError", "ValueError", "IngestionError"}
-                else 503
+            job = IngestionJob(
+                id=job_id,
+                workspace_id=request.state.workspace_id,
+                stage="search",
+                priority=0,
+                payload=payload,
+                idempotency_key=f"search:{job_id}",
+                max_attempts=settings.job_max_attempts,
             )
-            raise HTTPException(status_code=status_code, detail=response["message"])
-        return response
+            session.add(job)
+            await notify_work(session)
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            # A commit failure can have an ambiguous outcome. Keep the object
+            # for a possibly committed job; bucket lifecycle handles orphans.
+            raise
+        return {"id": str(job_id), "status": "queued"}
 
-    async def local_embedding(payload: dict[str, Any]) -> list[float]:
-        response = await local_query(payload)
-        vector = response.get("vector")
-        if vector is None:
-            raise HTTPException(status_code=422, detail="query produced no embedding")
-        return vector
+    @scoped.get("/api/search/jobs/{job_id}", response_model=SearchJobResponse)
+    async def search_status(
+        job_id: UUID, request: Request, session: Session
+    ) -> dict[str, Any]:
+        job = await session.scalar(
+            select(IngestionJob).where(
+                IngestionJob.id == job_id,
+                IngestionJob.stage == "search",
+                IngestionJob.workspace_id == request.state.workspace_id,
+            )
+        )
+        if job is None:
+            raise HTTPException(status_code=404, detail="search job not found")
+        return {
+            "id": str(job.id),
+            "status": job.status,
+            "result": job.result if job.status == "succeeded" else None,
+            "error": (
+                {"code": job.error_code, "message": job.error_message}
+                if job.status == "failed"
+                else None
+            ),
+        }
 
-    @scoped.post("/api/search")
+    @scoped.post(
+        "/api/search", status_code=202, response_model=SearchSubmissionResponse
+    )
     async def search(
         body: SearchRequest, request: Request, session: Session
     ) -> dict[str, Any]:
-        vector = (
-            await local_embedding({"kind": "text", "text": body.query})
-            if body.mode in {"hybrid", "semantic"}
-            else None
-        )
-        results = await search_workspace(
-            session,
-            request.state.workspace_id,
-            query=body.query,
-            vector=vector,
-            mode=body.mode,
-            limit=body.limit,
-            candidate_limit=body.candidate_limit,
-            content_types=body.content_types,
-            asset_ids=body.asset_ids,
-            weights=body.weights,
-            similarity_cutoffs=body.similarity_cutoffs,
-            representation_mode=body.representation_mode,
-        )
-        return {
-            "query": body.query,
-            "mode": body.mode,
-            "representation_mode": body.representation_mode,
-            "results": results,
-        }
+        return await enqueue_search(request, session, body)
 
-    @scoped.post("/api/search/image")
+    @scoped.post(
+        "/api/search/image", status_code=202, response_model=SearchSubmissionResponse
+    )
     async def search_image(
         request: Request,
         session: Session,
@@ -782,6 +728,7 @@ def create_app(
                 status_code=422, detail="candidate_limit must be at least limit"
             )
         content = await file.read(8 * 1024 * 1024 + 1)
+        content_type = file.content_type or "application/octet-stream"
         await file.close()
         if len(content) > 8 * 1024 * 1024:
             raise HTTPException(status_code=413, detail="query image exceeds 8 MiB")
@@ -798,38 +745,19 @@ def create_app(
             similarity_cutoffs,
             representation_mode,
         )
-        payload: dict[str, Any] = {
-            "kind": "image_text" if clean_query else "image",
-            "content_base64": base64.b64encode(content).decode("ascii"),
-        }
-        if clean_query:
-            payload["text"] = clean_query
-        vector = (
-            await local_embedding(payload)
-            if resolved_mode in {"hybrid", "semantic"}
-            else None
-        )
-        results = await search_workspace(
+        return await enqueue_search(
+            request,
             session,
-            request.state.workspace_id,
+            options,
+            kind="image_text" if clean_query else "image",
             query=clean_query,
-            vector=vector,
-            mode=resolved_mode,
-            limit=options.limit,
-            candidate_limit=options.candidate_limit,
-            content_types=options.content_types,
-            asset_ids=options.asset_ids,
-            weights=options.weights,
-            similarity_cutoffs=options.similarity_cutoffs,
-            representation_mode=options.representation_mode,
+            content=content,
+            content_type=content_type,
         )
-        return {
-            "mode": resolved_mode,
-            "representation_mode": options.representation_mode,
-            "results": results,
-        }
 
-    @scoped.post("/api/search/media")
+    @scoped.post(
+        "/api/search/media", status_code=202, response_model=SearchSubmissionResponse
+    )
     async def search_media(
         request: Request,
         session: Session,
@@ -865,55 +793,16 @@ def create_app(
             similarity_cutoffs,
             representation_mode,
         )
-        try:
-            prepared = await local_query(
-                {
-                    "kind": "media",
-                    "content_base64": base64.b64encode(content).decode("ascii"),
-                    "content_type": content_type,
-                    "include_embeddings": resolved_mode != "keyword",
-                    "query_text": clean_query,
-                }
-            )
-        except HTTPException:
-            raise
-        transcript = str(prepared.get("transcript", ""))
-        combined_query = clean_query or transcript
-        vector = prepared.get("vector")
-        if resolved_mode in {"hybrid", "semantic"} and vector is None:
-            raise HTTPException(
-                status_code=422,
-                detail="media query produced no searchable audio or video embeddings",
-            )
-        results = await search_workspace(
+        return await enqueue_search(
+            request,
             session,
-            request.state.workspace_id,
-            query=combined_query,
-            vector=vector,
-            mode=resolved_mode,
-            limit=options.limit,
-            candidate_limit=options.candidate_limit,
-            content_types=options.content_types,
-            asset_ids=options.asset_ids,
-            weights=options.weights,
-            similarity_cutoffs=options.similarity_cutoffs,
-            representation_mode=options.representation_mode,
+            options,
+            kind="media",
+            query=clean_query,
+            content=content,
+            content_type=content_type,
+            filename=filename,
         )
-        return {
-            "mode": resolved_mode,
-            "representation_mode": options.representation_mode,
-            "query": clean_query,
-            "transcript": transcript,
-            "query_window_count": prepared["query_window_count"],
-            "query_duration_seconds": prepared["query_duration_seconds"],
-            "covered_ranges_seconds": prepared["covered_ranges_seconds"],
-            "max_query_windows_per_modality": prepared[
-                "max_query_windows_per_modality"
-            ],
-            "pooled_modalities": prepared["pooled_modalities"],
-            "results": results,
-            "source_filename": filename,
-        }
 
     @scoped.put("/api/profiles/{profile_name}", response_model=ProfileResponse)
     async def save_profile(
@@ -1070,6 +959,7 @@ def create_app(
             failed.lease_expires_at = None
             generation.state = "queued"
             asset.state = "ready" if asset.active_generation_id else "queued"
+            await notify_work(session)
         return {
             "status": "retrying",
             "asset_id": asset_id,
@@ -1258,6 +1148,7 @@ def create_app(
                 )
             )
             asset.state = "ready" if asset.active_generation_id else "queued"
+            await notify_work(session)
         return {
             "status": "queued",
             "asset_id": asset_id,
@@ -1315,6 +1206,7 @@ def create_app(
                     max_attempts=request.app.state.settings.job_max_attempts,
                 )
                 session.add(cleanup)
+                await notify_work(session)
         return {"status": "deleting", "asset_id": asset_id}
 
     app.include_router(scoped)

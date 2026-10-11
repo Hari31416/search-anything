@@ -257,6 +257,10 @@ class IngestionJob(Base):
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    workspace_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
+    result: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     asset_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("assets.id", ondelete="CASCADE")
     )

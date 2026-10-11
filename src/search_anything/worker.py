@@ -3,20 +3,18 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 import json
 import logging
 import math
 import os
 import shutil
 import socket
-import stat
 import subprocess
 import tempfile
 import time
 from contextlib import suppress
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 from uuid import UUID, uuid4
@@ -25,6 +23,9 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from search_anything.events import WorkWakeup, notify_work
+from search_anything.search_requests import SearchRequest
+from search_anything.retrieval import search_workspace
 from search_anything.db import make_engine
 from search_anything.jobs import (
     LeasedJob,
@@ -98,6 +99,7 @@ class Worker:
         self._whisper_model: Any | None = None
         self.worker_id = f"{socket.gethostname()}-{os.getpid()}"
         self.handlers: dict[str, JobHandler] = {
+            "search": self.search_job,
             "probe": self.probe_asset,
             "index": self.index_generation,
             "cleanup": self.cleanup_asset,
@@ -105,121 +107,166 @@ class Worker:
 
     async def run(self) -> None:
         await self.scheduler.start()
-        query_server: asyncio.AbstractServer | None = None
         try:
-            query_server = await self._start_query_server()
-            logger.info("Worker %s started", self.worker_id)
-            while True:
-                if not await self.run_once():
-                    await asyncio.sleep(self.settings.job_poll_seconds)
+            async with asyncio.TaskGroup() as tasks:
+                tasks.create_task(self._job_loop(("search",)))
+                tasks.create_task(self._job_loop(("probe", "index", "cleanup")))
+                tasks.create_task(self._query_cleanup_loop())
         finally:
-            if query_server is not None:
-                query_server.close()
-                await query_server.wait_closed()
-                self.settings.model_socket_path.unlink(missing_ok=True)
             await self.scheduler.close()
 
-    async def _start_query_server(self) -> asyncio.AbstractServer:
-        path = self.settings.model_socket_path
-        try:
-            path.parent.mkdir(parents=True, mode=0o700)
-        except FileExistsError:
-            parent_stat = path.parent.stat()
-            if (
-                parent_stat.st_uid != os.getuid()
-                or stat.S_IMODE(parent_stat.st_mode) & 0o077
-            ):
-                raise RuntimeError(
-                    f"model socket directory must be user-owned and private: {path.parent}"
-                )
-        if path.exists():
-            if not stat.S_ISSOCK(path.stat().st_mode):
-                raise RuntimeError(f"model socket path is occupied: {path}")
-            try:
-                _, writer = await asyncio.open_unix_connection(str(path))
-            except (ConnectionRefusedError, FileNotFoundError):
-                path.unlink(missing_ok=True)
-            else:
-                writer.close()
-                await writer.wait_closed()
-                raise RuntimeError(f"another model owner is listening at {path}")
-        server = await asyncio.start_unix_server(
-            self._handle_query_connection,
-            path=str(path),
-            limit=24 * 1024 * 1024,
-        )
-        os.chmod(path, 0o600)
-        logger.info("Local query inference socket ready at %s", path)
-        return server
+    async def _job_loop(self, stages: tuple[str, ...]) -> None:
+        async with WorkWakeup(self.settings.database_url) as wakeup:
+            while True:
+                # Clear before checking durable state to avoid losing a wake-up
+                # between the claim query and wait.
+                wakeup.event.clear()
+                if not await self.run_once(stages):
+                    await wakeup.wait(self.settings.job_poll_seconds)
 
-    async def _handle_query_connection(
-        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
-    ) -> None:
-        try:
-            line = await asyncio.wait_for(reader.readline(), timeout=60)
-            request = json.loads(line)
-            kind = request.get("kind")
+    async def _query_cleanup_loop(self) -> None:
+        while True:
+            try:
+                await self.cleanup_query_inputs()
+            except Exception:
+                logger.exception("Query input cleanup failed; will retry")
+            await asyncio.sleep(60)
+
+    async def cleanup_query_inputs(self) -> None:
+        async with self.session_factory() as session:
+            jobs = (
+                await session.scalars(
+                    select(IngestionJob)
+                    .where(
+                        IngestionJob.stage == "search",
+                        IngestionJob.status.in_(("succeeded", "failed", "cancelled")),
+                        IngestionJob.payload["storage_key"].astext.is_not(None),
+                    )
+                    .limit(100)
+                )
+            ).all()
+        for job in jobs:
+            await self.storage.delete_object(job.payload["storage_key"])
+            async with self.session_factory() as session:
+                await session.execute(
+                    update(IngestionJob)
+                    .where(
+                        IngestionJob.id == job.id,
+                        IngestionJob.status.in_(("succeeded", "failed", "cancelled")),
+                    )
+                    .values(payload={**job.payload, "storage_key": None})
+                )
+                await session.commit()
+
+        async with self.session_factory() as session:
+            await session.execute(
+                delete(IngestionJob).where(
+                    IngestionJob.stage == "search",
+                    IngestionJob.status.in_(("succeeded", "failed", "cancelled")),
+                    IngestionJob.payload["storage_key"].astext.is_(None),
+                    IngestionJob.updated_at
+                    < datetime.now(timezone.utc)
+                    - timedelta(hours=self.settings.query_retention_hours),
+                )
+            )
+            await session.commit()
+
+    async def search_job(self, job: LeasedJob) -> None:
+        payload = job.payload
+        options = SearchRequest.model_validate(payload["options"])
+        query = payload["query"]
+        kind = payload["kind"]
+        vector = None
+        prepared: dict[str, Any] = {}
+        raw = None
+        if payload.get("storage_key"):
+            stored = await self.storage.get_object(payload["storage_key"])
+            try:
+                maximum = 16 * 1024 * 1024 if kind == "media" else 8 * 1024 * 1024
+                raw = await asyncio.to_thread(stored.body.read, maximum + 1)
+                if len(raw) > maximum:
+                    raise ValueError("query input exceeds size limit")
+            finally:
+                await asyncio.to_thread(stored.body.close)
+        if kind == "media":
+            if raw is None:
+                raise ValueError("query media is missing")
+            prepared = await self._prepare_media_query(
+                raw,
+                payload["content_type"],
+                include_embeddings=options.mode != "keyword",
+                query_text=query,
+            )
+            vector = prepared.pop("vector", None)
+        elif options.mode in {"hybrid", "semantic"}:
             if kind == "text":
                 vector = await self.scheduler.submit(
-                    self._embed_query_text, str(request.get("text", "")), kind="query"
-                )
-                response = {"vector": vector}
-            elif kind == "image":
-                raw = await asyncio.to_thread(
-                    base64.b64decode, request["content_base64"], validate=True
-                )
-                if len(raw) > 8 * 1024 * 1024:
-                    raise ValueError("query image exceeds the 8 MiB limit")
-                image = await asyncio.to_thread(self._decode_query_image, raw)
-                try:
-                    vector = await self.scheduler.submit(
-                        self._embed_image, image, kind="query"
-                    )
-                finally:
-                    image.close()
-                response = {"vector": vector}
-            elif kind == "image_text":
-                raw = await asyncio.to_thread(
-                    base64.b64decode, request["content_base64"], validate=True
-                )
-                if len(raw) > 8 * 1024 * 1024:
-                    raise ValueError("query image exceeds the 8 MiB limit")
-                image = await asyncio.to_thread(self._decode_query_image, raw)
-                try:
-                    vector = await self.scheduler.submit(
-                        self._embed_combined,
-                        str(request.get("text", "")),
-                        image=image,
-                        kind="query",
-                    )
-                finally:
-                    image.close()
-                response = {"vector": vector}
-            elif kind == "media":
-                raw = await asyncio.to_thread(
-                    base64.b64decode, request["content_base64"], validate=True
-                )
-                if len(raw) > 16 * 1024 * 1024:
-                    raise ValueError("query media exceeds the 16 MiB limit")
-                response = await self._prepare_media_query(
-                    raw,
-                    str(request.get("content_type", "application/octet-stream")),
-                    include_embeddings=bool(request.get("include_embeddings", True)),
-                    query_text=str(request.get("query_text", "")),
+                    self._embed_query_text, query, kind="query"
                 )
             else:
-                raise ValueError("unsupported local query input")
-        except Exception as error:
-            response = {
-                "error": type(error).__name__,
-                "message": str(error)[:512],
-            }
-        writer.write(json.dumps(response, separators=(",", ":")).encode() + b"\n")
-        with suppress(Exception):
-            await writer.drain()
-        writer.close()
-        with suppress(Exception):
-            await writer.wait_closed()
+                if raw is None:
+                    raise ValueError("query image is missing")
+                image = await asyncio.to_thread(self._decode_query_image, raw)
+                try:
+                    if kind == "image_text":
+                        vector = await self.scheduler.submit(
+                            self._embed_combined, query, image=image, kind="query"
+                        )
+                    else:
+                        vector = await self.scheduler.submit(
+                            self._embed_image, image, kind="query"
+                        )
+                finally:
+                    image.close()
+        if options.mode in {"hybrid", "semantic"} and vector is None:
+            raise ValueError("query produced no searchable embeddings")
+        async with self.session_factory() as session:
+            workspace_id = await session.scalar(
+                select(IngestionJob.workspace_id).where(IngestionJob.id == job.id)
+            )
+            if workspace_id is None:
+                raise ValueError("search workspace is missing")
+            if payload.get("embedding_only"):
+                response = {"vector": vector}
+            else:
+                results = await search_workspace(
+                    session,
+                    workspace_id,
+                    query=query or str(prepared.get("transcript", "")),
+                    vector=vector,
+                    **options.model_dump(exclude={"query"}),
+                )
+                response = {
+                    "query": query,
+                    "mode": options.mode,
+                    "representation_mode": options.representation_mode,
+                    **prepared,
+                    "results": results,
+                }
+                if kind == "media":
+                    response["source_filename"] = payload["filename"]
+            changed = await session.execute(
+                update(IngestionJob)
+                .where(
+                    IngestionJob.id == job.id,
+                    IngestionJob.status == "running",
+                    IngestionJob.lease_token == job.lease_token,
+                    IngestionJob.lease_expires_at > datetime.now(timezone.utc),
+                    IngestionJob.cancellation_requested.is_(False),
+                )
+                .values(
+                    result=response,
+                    status="succeeded",
+                    progress=1.0,
+                    lease_owner=None,
+                    lease_token=None,
+                    lease_expires_at=None,
+                    heartbeat_at=datetime.now(timezone.utc),
+                )
+            )
+            if changed.rowcount != 1:
+                raise LeaseLost(f"search job {job.id} was reclaimed")
+            await session.commit()
 
     @staticmethod
     def _decode_query_image(raw: bytes) -> Any:
@@ -397,11 +444,12 @@ class Worker:
 
         return [Image.open(path).convert("RGB") for path in paths]
 
-    async def run_once(self) -> bool:
+    async def run_once(self, stages: tuple[str, ...] | None = None) -> bool:
         job = await claim_job(
             self.session_factory,
             self.worker_id,
             self.settings.job_lease_seconds,
+            stages=stages,
         )
         if job is None:
             return False
@@ -424,7 +472,7 @@ class Worker:
         heartbeat = asyncio.create_task(self._heartbeat(job))
         try:
             await handler(job)
-            if job.stage in {"cleanup", "index"}:
+            if job.stage in {"cleanup", "index", "search"}:
                 pass
             elif await cancellation_requested(self.session_factory, job):
                 await self.cancel_claim(job)
@@ -437,7 +485,16 @@ class Worker:
         except Exception as error:
             delay = min(60.0, 2.0 ** min(job.attempts - 1, 6))
             try:
-                await fail_job(self.session_factory, job, error, delay)
+                await fail_job(
+                    self.session_factory,
+                    job,
+                    error,
+                    delay,
+                    retryable=not (
+                        job.stage == "search"
+                        and isinstance(error, (ValueError, ContextLimitError))
+                    ),
+                )
             except LeaseLost:
                 logger.info("Stale worker could not record failure for job %s", job.id)
             logger.exception("Job %s failed", job.id)
@@ -586,6 +643,8 @@ class Worker:
                         index_elements=[IngestionJob.idempotency_key]
                     )
                 )
+
+                await notify_work(session)
 
     def _model(self) -> LocalEmbeddingModel:
         if self._embedding_model is None:

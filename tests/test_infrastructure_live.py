@@ -53,7 +53,6 @@ async def test_live_upload_ranges_presigned_jobs_generation_and_cleanup(
     tmp_path: Path,
 ) -> None:
     settings = integration_settings()
-    settings.model_socket_path = Path("/tmp") / f"sa-{uuid4().hex[:8]}" / "model.sock"
     engine = make_engine(settings)
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     storage = S3ObjectStorage(settings)
@@ -618,8 +617,25 @@ async def test_live_upload_ranges_presigned_jobs_generation_and_cleanup(
                     ] == ["audio", "transcript"]
                 audio_generation_id = combined_audio_generation_id
                 image_generation_id = combined_generation_id
-                query_server = await worker._start_query_server()
-                text_search = await client.post(
+
+                async def completed_search(path, **kwargs):
+                    submitted = await client.post(path, **kwargs)
+                    if submitted.status_code != 202:
+                        return submitted
+                    ident = UUID(submitted.json()["id"])
+                    while True:
+                        assert await worker.run_once(("search",))
+                        status = await client.get(f"/api/search/jobs/{ident}")
+                        body = status.json()
+                        if body["status"] == "succeeded":
+                            return httpx.Response(200, json=body["result"])
+                        if body["status"] == "failed":
+                            return httpx.Response(
+                                422, json={"detail": body["error"]["message"]}
+                            )
+                        await asyncio.sleep(1)
+
+                text_search = await completed_search(
                     "/api/search",
                     json={"query": "fire truck", "mode": "hybrid", "limit": 10},
                 )
@@ -638,7 +654,7 @@ async def test_live_upload_ranges_presigned_jobs_generation_and_cleanup(
                     for match in result["matches"]
                     for representation in match["representations"]
                 )
-                filtered_search = await client.post(
+                filtered_search = await completed_search(
                     "/api/search",
                     json={
                         "query": "fire truck",
@@ -651,7 +667,7 @@ async def test_live_upload_ranges_presigned_jobs_generation_and_cleanup(
                 assert [
                     result["asset_id"] for result in filtered_search.json()["results"]
                 ] == [str(image_asset_id)]
-                channel_search = await client.post(
+                channel_search = await completed_search(
                     "/api/search",
                     json={
                         "query": "fire truck",
@@ -680,7 +696,7 @@ async def test_live_upload_ranges_presigned_jobs_generation_and_cleanup(
                     for result in channel_search.json()["results"]
                     for match in result["matches"]
                 )
-                image_search = await client.post(
+                image_search = await completed_search(
                     "/api/search/image",
                     files={"file": ("query.png", image_bytes.getvalue(), "image/png")},
                 )
@@ -689,7 +705,7 @@ async def test_live_upload_ranges_presigned_jobs_generation_and_cleanup(
                     result["asset_id"] == str(image_asset_id)
                     for result in image_search.json()["results"]
                 )
-                combined_search = await client.post(
+                combined_search = await completed_search(
                     "/api/search",
                     json={
                         "query": "fire truck",
@@ -705,7 +721,7 @@ async def test_live_upload_ranges_presigned_jobs_generation_and_cleanup(
                     for result in combined_search.json()["results"]
                     for match in result["matches"]
                 )
-                media_search = await client.post(
+                media_search = await completed_search(
                     "/api/search/media",
                     data={
                         "query": "blue bicycle",
@@ -731,7 +747,7 @@ async def test_live_upload_ranges_presigned_jobs_generation_and_cleanup(
                     media_query["covered_ranges_seconds"]["audio"][-1][1]
                     == media_query["query_duration_seconds"]
                 )
-                video_query = await client.post(
+                video_query = await completed_search(
                     "/api/search/media",
                     files={
                         "file": (
@@ -770,7 +786,7 @@ async def test_live_upload_ranges_presigned_jobs_generation_and_cleanup(
                     check=True,
                     timeout=30,
                 )
-                rejected_audio_query = await client.post(
+                rejected_audio_query = await completed_search(
                     "/api/search/media",
                     files={
                         "file": (
@@ -804,7 +820,7 @@ async def test_live_upload_ranges_presigned_jobs_generation_and_cleanup(
                     check=True,
                     timeout=30,
                 )
-                rejected_video_query = await client.post(
+                rejected_video_query = await completed_search(
                     "/api/search/media",
                     files={
                         "file": (
@@ -816,10 +832,6 @@ async def test_live_upload_ranges_presigned_jobs_generation_and_cleanup(
                 )
                 assert rejected_video_query.status_code == 422
                 assert "80 seconds" in rejected_video_query.json()["detail"]
-                query_server.close()
-                await query_server.wait_closed()
-                settings.model_socket_path.unlink(missing_ok=True)
-                settings.model_socket_path.parent.rmdir()
                 with pytest.raises(ContextLimitError):
                     worker._embedding_model.embed_texts(["word " * 9000])
                 with pytest.raises(ContextLimitError, match="audio windows"):
@@ -1002,7 +1014,7 @@ async def test_live_upload_ranges_presigned_jobs_generation_and_cleanup(
                     assert await session.get(Asset, concurrent_asset_id) is None
                     assert await session.get(Asset, image_asset_id) is None
                     assert await session.get(Asset, unsupported_asset_id) is None
-                after_delete_search = await client.post(
+                after_delete_search = await completed_search(
                     "/api/search",
                     json={"query": "FIRE TRUCK", "mode": "keyword"},
                 )
@@ -1015,6 +1027,7 @@ async def test_live_upload_ranges_presigned_jobs_generation_and_cleanup(
                 assert (
                     await client.get(f"/api/assets/{concurrent_asset_id}")
                 ).status_code == 404
+                await worker.cleanup_query_inputs()
                 await worker.scheduler.close()
     finally:
         try:

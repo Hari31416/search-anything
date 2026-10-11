@@ -78,7 +78,21 @@ def search(
     started = time.perf_counter()
     try:
         with urlopen(request, timeout=180) as response:
-            result = json.loads(response.read())
+            submitted = json.loads(response.read())
+        deadline = time.monotonic() + 600
+        while True:
+            with urlopen(
+                f"{base_url.rstrip('/')}/api/search/jobs/{submitted['id']}", timeout=30
+            ) as response:
+                job = json.loads(response.read())
+            if job["status"] == "succeeded":
+                result = job["result"]
+                break
+            if job["status"] == "failed":
+                raise RuntimeError(job["error"]["message"])
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"Search {submitted['id']} is still pending")
+            time.sleep(0.5)
     except HTTPError as error:
         raise RuntimeError(
             f"search returned HTTP {error.code}: {error.read()!r}"

@@ -1,7 +1,6 @@
 """Application settings loaded from environment variables."""
 
 from functools import lru_cache
-import os
 from pathlib import Path
 from uuid import UUID
 
@@ -34,6 +33,7 @@ class Settings(BaseSettings):
     default_workspace_name: str = "Default workspace"
     job_lease_seconds: int = Field(default=60, ge=5, le=3600)
     job_poll_seconds: float = Field(default=1.0, ge=0.1, le=30.0)
+    query_retention_hours: int = Field(default=24, ge=1, le=720)
     job_max_attempts: int = Field(default=5, ge=1, le=20)
     embedding_model_path: Path = Path(
         "~/.cache/huggingface/hub/models--google--embeddinggemma-2/snapshots/"
@@ -49,12 +49,10 @@ class Settings(BaseSettings):
     whisper_checkpoint_path: Path = Path("~/.cache/whisper/tiny.pt").expanduser()
     whisper_model_name: str = "tiny"
     whisper_device: InferenceDevice = "auto"
-    model_socket_path: Path = Path(f"/tmp/search-anything-{os.getuid()}/model.sock")
 
     @field_validator(
         "embedding_model_path",
         "whisper_checkpoint_path",
-        "model_socket_path",
         mode="before",
     )
     @classmethod

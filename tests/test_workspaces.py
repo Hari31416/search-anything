@@ -154,10 +154,8 @@ async def test_cross_workspace_asset_reads_and_actions_are_rejected(workspace_ap
 
 
 @pytest.mark.asyncio
-async def test_search_forwards_selected_workspace(workspace_app, monkeypatch):
-    app, _, _, _, _, a, b = workspace_app
-    search = AsyncMock(return_value=[])
-    monkeypatch.setattr("search_anything.api.search_workspace", search)
+async def test_search_enqueues_selected_workspace(workspace_app):
+    app, session, _, _, _, a, b = workspace_app
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://mock.test"
     ) as client:
@@ -167,8 +165,13 @@ async def test_search_forwards_selected_workspace(workspace_app, monkeypatch):
                 params={"workspace_id": str(ident)},
                 json={"query": "moon", "mode": "keyword"},
             )
-            assert response.status_code == 200, response.text
-            assert search.await_args.args[1] == ident
+            assert response.status_code == 202, response.text
+            job = session.add.call_args.args[0]
+            assert job.workspace_id == ident
+            assert job.stage == "search"
+            assert job.payload["options"]["query"] == "moon"
+            assert response.json()["id"] == str(job.id)
+            session.commit.assert_awaited()
 
 
 @pytest.mark.asyncio

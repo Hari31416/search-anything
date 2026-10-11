@@ -37,9 +37,12 @@ send inference work through the worker's owner process.
 - `POST /api/assets/{id}/retry`, `/cancel`, and `/reprocess` manage processing.
   Reprocess accepts `{"profile_name": "automatic"}`. A new generation is
   indexed before it replaces the prior active generation.
-- `POST /api/search` performs exact dense, PostgreSQL full-text, and normalized
+- `POST /api/search` queues exact dense, PostgreSQL full-text, and normalized
   identifier retrieval with filters, per-channel weights, and optional dense
-  similarity cutoffs. `POST /api/search/image` accepts a local image query.
+  similarity cutoffs. `/api/search/image` and `/api/search/media` queue binary
+  queries using object-storage references. All three return 202 with a job ID.
+  `GET /api/search/jobs/{id}` returns workspace-scoped status and results.
+  Workers wake through Postgres notifications with polling fallback.
 - `GET /api/assets/{id}/content` streams the source and supports one HTTP byte
   range, including suffix and open-ended ranges.
 - `GET /api/assets/{id}/presigned` returns a short-lived local RustFS URL.

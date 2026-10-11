@@ -87,9 +87,19 @@ storage, not model-worker availability; handle search failures independently.
 | Save profile | `PUT /api/profiles/{name}`, JSON `{"options":{...}}`; creates an immutable revision |
 | Original source | `GET /api/assets/{id}/content`; supports byte ranges for playback |
 | Temporary source URL | `GET /api/assets/{id}/presigned`; returns `url` and `expires_in_seconds` |
-| Text search | `POST /api/search`, JSON search options |
-| Image query | `POST /api/search/image`, multipart `file` plus search options |
-| Audio/video query | `POST /api/search/media`, multipart `file` plus search options |
+| Text search | `POST /api/search`, JSON search options; returns 202 with job ID |
+| Image query | `POST /api/search/image`, multipart `file` plus search options; returns 202 |
+| Audio/video query | `POST /api/search/media`, multipart `file` plus search options; returns 202 |
+| Search status/result | `GET /api/search/jobs/{id}` with the submission workspace scope |
+
+Search submissions return `{"id":"UUID","status":"queued"}`. Poll the search
+status endpoint for `queued`, `running`, or `retry`; stop at `succeeded` or
+`failed`. Successful jobs contain the existing search response in `result`.
+Failed jobs contain `error: {"code":"...","message":"..."}`. Unknown or
+other-workspace jobs return 404. Terminal jobs expire after 24 hours by default.
+The API client handles submission and polling internally, so search components
+still receive `Promise<SearchResponse>`. Aborting that promise stops polling;
+it does not cancel durable execution. No worker URL or socket is exposed.
 
 Uploads use the latest `automatic` profile. There is no upload-time profile
 selector parameter. To use another profile, save it and explicitly reprocess

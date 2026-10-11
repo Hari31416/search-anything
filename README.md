@@ -113,6 +113,20 @@ curl -F 'file=@recording.wav' -F 'query=blue bicycle' \
   -F 'mode=hybrid' http://127.0.0.1:8000/api/search/media
 ```
 
+All search POST endpoints return **202 Accepted** with `{"id":"UUID","status":"queued"}`.
+Fetch the status and result with the same workspace scope:
+
+```sh
+curl 'http://127.0.0.1:8000/api/search/jobs/SEARCH_ID?workspace_id=WORKSPACE_ID'
+```
+
+The response contains `status`, `result`, and `error`. Status moves through
+`queued`, `running`, optional `retry`, and `succeeded` or `failed`. `result`
+contains the search response once successful. A failed job has an error
+`code` and `message`. The frontend polls every 500 ms and stops on completion,
+failure, cancellation of its request, or after ten minutes. Stopping frontend
+polling leaves the durable job running.
+
 Search modes are `hybrid`, `semantic`, and `keyword`. Filters and channel
 weights apply at query time without reindexing. Media query files have a
 16 MiB limit, with a maximum duration of 120 seconds for audio and 80 seconds
@@ -129,7 +143,30 @@ and asset lifecycle details.
 
 The backend uses Python and FastAPI. The frontend uses React, TypeScript,
 Vite, Tailwind CSS, and shadcn/ui. The API and worker run as separate processes;
-the worker handles model inference.
+the worker handles model inference and search execution. They communicate
+through durable Postgres jobs, with transactional `LISTEN/NOTIFY` wake-ups and
+polling fallback. No shared filesystem or direct worker endpoint is required.
+Image and media query inputs are stored in object storage, with only their
+keys in Postgres. Separate worker loops handle searches and ingestion; the
+local model scheduler prioritizes queries between inference calls.
+
+For separate VMs or services, configure both processes with the same remote
+Postgres database and object-storage bucket. Only workers need model files,
+FFmpeg, and OCR tools. Run `make migrate` before starting the updated API and
+worker. Each worker loads its own models; size worker replicas for available
+CPU/GPU memory. Notification listeners need direct or session-pooled Postgres
+connections. If listeners are unavailable, durable jobs still run by polling.
+
+Workers remove binary query inputs after jobs finish and purge terminal search
+jobs after `SEARCH_QUERY_RETENTION_HOURS`, which defaults to 24. Cleanup runs
+every minute while a worker is running. Configure an object-storage lifecycle
+policy for abandoned uploads under `queries/`, using a duration longer than
+your maximum queued and running job lifetime. This covers uploads whose API
+request failed before a durable job was confirmed.
+
+The short submission and status endpoints allow the API to run separately on
+serverless compute. A Lambda deployment still needs an ASGI adapter, database
+connection management, and an upload strategy suited to its request limits.
 
 To run services in separate terminals:
 
@@ -205,3 +242,12 @@ and stored objects when it finishes.
 - [Search benchmarks](docs/search-benchmark.md)
 - [Retrieval experiments](docs/retrieval-experiments-2026-10-11.md)
 - [Media and retrieval fixes](docs/retrieval-fixes-2026-10-11.md)
+
+The durable search integration test needs a migrated, isolated Postgres database
+whose name ends in `_test`. It uses in-memory object storage and stub inference,
+so it does not require model files:
+
+```sh
+SEARCH_QUEUE_TEST_DATABASE_URL=postgresql+asyncpg://USER:PASSWORD@HOST/DB_test \
+  uv run pytest -q tests/test_search_jobs_live.py
+```

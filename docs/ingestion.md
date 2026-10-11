@@ -24,8 +24,9 @@ vector. A weighted GIN full-text index covers representation bodies and
 headings, with a separate filename GIN index and escaped normalized substring
 matching for identifiers. `/api/search` combines text, transcript, OCR, image,
 audio, and video dense channels with lexical and identifier channels.
-`/api/search/image` routes visual query embeddings through the worker's local
-model owner.
+`/api/search/image` queues visual queries for the worker. All search endpoints
+return 202 with a durable job ID; `/api/search/jobs/{id}` returns status and
+results. API and worker share Postgres and object storage, with no shared socket.
 
 Audio and video files are probed with local FFprobe. The worker splits media
 into overlapping windows and uses FFmpeg to decode mono 16 kHz audio and

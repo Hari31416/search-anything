@@ -115,8 +115,8 @@ uv run python scripts/benchmark_search.py run --split all \
   --output datasets/search-benchmark/results/baseline-warm-all.json
 ```
 
-The first semantic/hybrid run encodes queries through the local worker and
-saves a cache. Warm runs reuse those vectors. The cache identity includes
+The first semantic/hybrid run queues embedding requests through Postgres and
+saves a cache. The worker can run on a separate machine. Warm runs reuse those vectors. The cache identity includes
 model ID, revision, dimensions, context length, model path and manifest hash.
 If you modify local model weights without changing those identifiers, delete
 `query-vectors.json` before running again.

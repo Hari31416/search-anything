@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import and_, or_, select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from search_anything.events import notify_search_result
 from search_anything.models import (
     Asset,
     IngestionJob,
@@ -252,6 +253,8 @@ async def fail_job(
             current_job.lease_owner = None
             current_job.lease_token = None
             current_job.lease_expires_at = None
+            if job.stage == "search" and not retry:
+                await notify_search_result(session, job.id)
             if not retry and job.generation_id is not None:
                 generation = await session.scalar(
                     select(ProcessingGeneration)

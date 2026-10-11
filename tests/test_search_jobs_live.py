@@ -69,6 +69,7 @@ async def test_durable_search_contract_and_recovery(monkeypatch):
         database_url=database_url,
         default_workspace_id=uuid4(),
         job_poll_seconds=0.1,
+        query_wait_seconds=0,
     )
     engine = make_engine(settings)
     sessions = async_sessionmaker(engine, expire_on_commit=False)
@@ -130,6 +131,7 @@ async def test_durable_search_contract_and_recovery(monkeypatch):
                         break
                     await asyncio.sleep(0.01)
                 assert wakeup.connected
+                wakeup.event.clear()
                 async with sessions() as session:
                     await notify_work(session)
                     await session.rollback()
@@ -312,6 +314,107 @@ async def test_durable_search_contract_and_recovery(monkeypatch):
             )
             await session.execute(
                 delete(Workspace).where(Workspace.id.in_([workspace, other]))
+            )
+            await session.commit()
+        await engine.dispose()
+
+
+async def test_short_wait_completion_timeout_and_failure():
+    database_url = os.environ["SEARCH_QUEUE_TEST_DATABASE_URL"]
+    target = make_url(database_url)
+    assert target.drivername == "postgresql+asyncpg"
+    assert target.database.endswith("_test")
+    assert target.database != make_url(Settings().database_url).database
+    settings = Settings(
+        _env_file=None,
+        database_url=database_url,
+        default_workspace_id=uuid4(),
+        job_poll_seconds=0.1,
+        query_wait_seconds=5,
+    )
+    engine = make_engine(settings)
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    worker = Worker(settings, sessions, MemoryStorage())
+    app = create_app(settings, session_factory=sessions, storage=worker.storage)
+    async with sessions() as session:
+        session.add(Workspace(id=settings.default_workspace_id, name="short-wait-test"))
+        await session.commit()
+
+    async def briefly_delayed(job):
+        await asyncio.sleep(0.15)
+        await worker.search_job(job)
+
+    worker.handlers["search"] = briefly_delayed
+    running = asyncio.create_task(worker.run())
+    release = asyncio.Event()
+    try:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            started = asyncio.get_running_loop().time()
+            result = await client.post(
+                "/api/search", json={"query": "moon", "mode": "keyword"}
+            )
+            assert result.status_code == 200, result.text
+            # Completion must wake the request, rather than waiting for the
+            # one-second recovery poll while the listener is connected.
+            assert asyncio.get_running_loop().time() - started < 0.8
+            assert result.json()["results"] == []
+            # An already completed result is found even after its notification.
+            async with sessions() as session:
+                from sqlalchemy import select
+
+                job = await session.scalar(
+                    select(IngestionJob).where(
+                        IngestionJob.workspace_id == settings.default_workspace_id
+                    )
+                )
+            from search_anything.events import wait_for_search
+
+            assert (
+                await wait_for_search(
+                    sessions, database_url, job.id, settings.default_workspace_id, 1
+                )
+            ).status == "succeeded"
+
+            async def delayed(job):
+                await release.wait()
+                await worker.search_job(job)
+
+            worker.handlers["search"] = delayed
+            settings.query_wait_seconds = 0.1
+            start = asyncio.get_running_loop().time()
+            pending = await client.post(
+                "/api/search", json={"query": "slow", "mode": "keyword"}
+            )
+            assert pending.status_code == 202
+            assert asyncio.get_running_loop().time() - start < 0.8
+            release.set()
+            for _ in range(100):
+                status = (
+                    await client.get(f"/api/search/jobs/{pending.json()['id']}")
+                ).json()
+                if status["status"] == "succeeded":
+                    break
+                await asyncio.sleep(0.01)
+            assert status["status"] == "succeeded"
+
+            settings.query_wait_seconds = 5
+            worker.handlers["search"] = worker.search_job
+            worker._embed_query_text = lambda _: (_ for _ in ()).throw(
+                ValueError("invalid query")
+            )
+            failed = await client.post("/api/search", json={"query": "bad"})
+            assert failed.status_code == 422
+            assert failed.json()["detail"] == "invalid query"
+    finally:
+        release.set()
+        running.cancel()
+        with suppress(asyncio.CancelledError):
+            await running
+        async with sessions() as session:
+            await session.execute(
+                delete(Workspace).where(Workspace.id == settings.default_workspace_id)
             )
             await session.commit()
         await engine.dispose()

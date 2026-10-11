@@ -109,7 +109,7 @@ def workspace_app():
     )
     storage.presigned_get_url = AsyncMock(return_value="http://mock.test/moon")
     storage.put_file = AsyncMock()
-    settings = Settings(_env_file=None, default_workspace_id=a)
+    settings = Settings(_env_file=None, default_workspace_id=a, query_wait_seconds=0)
     app = create_app(settings, session_factory=lambda: session, storage=storage)
     return app, session, storage, workspaces, asset, a, b
 
@@ -233,3 +233,55 @@ async def test_create_rename_and_upload_scope(workspace_app):
             if call.args[0].column_descriptions[0]["entity"] is IngestionProfile
         ]
         assert profile_queries[-1].compile().params["workspace_id_1"] == b
+
+
+@pytest.mark.asyncio
+async def test_search_returns_completed_result_without_polling(
+    workspace_app, monkeypatch
+):
+    from search_anything.models import IngestionJob
+
+    app, _, _, _, _, a, _ = workspace_app
+    app.state.settings.query_wait_seconds = 5
+    result = {"query": "moon", "mode": "keyword", "results": []}
+    completed = IngestionJob(
+        id=uuid4(), workspace_id=a, status="succeeded", result=result
+    )
+    waiter = AsyncMock(return_value=completed)
+    monkeypatch.setattr("search_anything.api.wait_for_search", waiter)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://mock.test"
+    ) as client:
+        response = await client.post(
+            "/api/search", json={"query": "moon", "mode": "keyword"}
+        )
+    assert response.status_code == 200
+    assert response.json() == result
+    assert waiter.await_args.args[-1] == 5
+    assert waiter.await_args.args[-2] == a
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("code,status", [("ValueError", 422), ("RuntimeError", 503)])
+async def test_search_returns_failure_during_wait(
+    workspace_app, monkeypatch, code, status
+):
+    from search_anything.models import IngestionJob
+
+    app, _, _, _, _, a, _ = workspace_app
+    completed = IngestionJob(
+        id=uuid4(),
+        workspace_id=a,
+        status="failed",
+        error_code=code,
+        error_message="search failure",
+    )
+    monkeypatch.setattr(
+        "search_anything.api.wait_for_search", AsyncMock(return_value=completed)
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://mock.test"
+    ) as client:
+        response = await client.post("/api/search", json={"query": "moon"})
+    assert response.status_code == status
+    assert response.json()["detail"] == "search failure"

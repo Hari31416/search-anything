@@ -26,7 +26,7 @@ from fastapi import (
     Request,
     UploadFile,
 )
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from pydantic import (
     BaseModel,
@@ -49,7 +49,7 @@ from search_anything.models import (
 )
 from search_anything.ranges import UnsatisfiableRange, parse_range
 from search_anything.search_requests import SearchRequest
-from search_anything.events import notify_work
+from search_anything.events import notify_work, wait_for_search
 from search_anything.settings import Settings, get_settings
 from search_anything.storage import S3ObjectStorage
 
@@ -633,7 +633,7 @@ def create_app(
         content: bytes | None = None,
         content_type: str = "application/octet-stream",
         filename: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | JSONResponse:
         job_id = uuid4()
         key = None
         if content is not None:
@@ -670,6 +670,26 @@ def create_app(
             # A commit failure can have an ambiguous outcome. Keep the object
             # for a possibly committed job; bucket lifecycle handles orphans.
             raise
+        completed = await wait_for_search(
+            session_factory,
+            settings.database_url,
+            job_id,
+            request.state.workspace_id,
+            settings.query_wait_seconds,
+        )
+        if completed is not None:
+            if completed.status == "succeeded":
+                return JSONResponse(status_code=200, content=completed.result)
+            status_code = (
+                422
+                if completed.error_code
+                in {"ValueError", "ContextLimitError", "IngestionError"}
+                else 503
+            )
+            raise HTTPException(
+                status_code=status_code,
+                detail=completed.error_message or "Search failed",
+            )
         return {"id": str(job_id), "status": "queued"}
 
     @scoped.get("/api/search/jobs/{job_id}", response_model=SearchJobResponse)
@@ -697,15 +717,31 @@ def create_app(
         }
 
     @scoped.post(
-        "/api/search", status_code=202, response_model=SearchSubmissionResponse
+        "/api/search",
+        status_code=202,
+        response_model=SearchSubmissionResponse,
+        responses={
+            200: {
+                "description": "Search completed during the configured wait",
+                "model": dict[str, Any],
+            }
+        },
     )
     async def search(
         body: SearchRequest, request: Request, session: Session
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | JSONResponse:
         return await enqueue_search(request, session, body)
 
     @scoped.post(
-        "/api/search/image", status_code=202, response_model=SearchSubmissionResponse
+        "/api/search/image",
+        status_code=202,
+        response_model=SearchSubmissionResponse,
+        responses={
+            200: {
+                "description": "Search completed during the configured wait",
+                "model": dict[str, Any],
+            }
+        },
     )
     async def search_image(
         request: Request,
@@ -722,7 +758,7 @@ def create_app(
         representation_mode: Annotated[
             str, Form(pattern="^(separate|combined|both)$")
         ] = "separate",
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | JSONResponse:
         if candidate_limit < limit:
             raise HTTPException(
                 status_code=422, detail="candidate_limit must be at least limit"
@@ -756,7 +792,15 @@ def create_app(
         )
 
     @scoped.post(
-        "/api/search/media", status_code=202, response_model=SearchSubmissionResponse
+        "/api/search/media",
+        status_code=202,
+        response_model=SearchSubmissionResponse,
+        responses={
+            200: {
+                "description": "Search completed during the configured wait",
+                "model": dict[str, Any],
+            }
+        },
     )
     async def search_media(
         request: Request,
@@ -773,7 +817,7 @@ def create_app(
         representation_mode: Annotated[
             str, Form(pattern="^(separate|combined|both)$")
         ] = "separate",
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | JSONResponse:
         content = await file.read(16 * 1024 * 1024 + 1)
         content_type = file.content_type or "application/octet-stream"
         filename = file.filename or "query-media"

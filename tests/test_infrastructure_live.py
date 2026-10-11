@@ -53,6 +53,7 @@ async def test_live_upload_ranges_presigned_jobs_generation_and_cleanup(
     tmp_path: Path,
 ) -> None:
     settings = integration_settings()
+    settings.query_wait_seconds = 0
     engine = make_engine(settings)
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     storage = S3ObjectStorage(settings)

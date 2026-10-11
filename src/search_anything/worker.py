@@ -23,7 +23,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from search_anything.events import WorkWakeup, notify_work
+from search_anything.events import WorkWakeup, notify_work, notify_search_result
 from search_anything.search_requests import SearchRequest
 from search_anything.retrieval import search_workspace
 from search_anything.db import make_engine
@@ -266,6 +266,7 @@ class Worker:
             )
             if changed.rowcount != 1:
                 raise LeaseLost(f"search job {job.id} was reclaimed")
+            await notify_search_result(session, job.id)
             await session.commit()
 
     @staticmethod

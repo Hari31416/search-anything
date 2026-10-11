@@ -87,18 +87,21 @@ storage, not model-worker availability; handle search failures independently.
 | Save profile | `PUT /api/profiles/{name}`, JSON `{"options":{...}}`; creates an immutable revision |
 | Original source | `GET /api/assets/{id}/content`; supports byte ranges for playback |
 | Temporary source URL | `GET /api/assets/{id}/presigned`; returns `url` and `expires_in_seconds` |
-| Text search | `POST /api/search`, JSON search options; returns 202 with job ID |
-| Image query | `POST /api/search/image`, multipart `file` plus search options; returns 202 |
-| Audio/video query | `POST /api/search/media`, multipart `file` plus search options; returns 202 |
+| Text search | `POST /api/search`, JSON search options; returns 200 with results or 202 with job ID |
+| Image query | `POST /api/search/image`, multipart `file` plus search options; returns 200 or 202 |
+| Audio/video query | `POST /api/search/media`, multipart `file` plus search options; returns 200 or 202 |
 | Search status/result | `GET /api/search/jobs/{id}` with the submission workspace scope |
 
-Search submissions return `{"id":"UUID","status":"queued"}`. Poll the search
+Search submissions wait up to `SEARCH_QUERY_WAIT_SECONDS`, default 5 seconds,
+configurable from 0 to 5. Completed requests return 200 with the search response;
+failures return 422 or 503. Timed-out waits return 202 with
+`{"id":"UUID","status":"queued"}` and the job continues. Poll the search
 status endpoint for `queued`, `running`, or `retry`; stop at `succeeded` or
 `failed`. Successful jobs contain the existing search response in `result`.
 Failed jobs contain `error: {"code":"...","message":"..."}`. Unknown or
 other-workspace jobs return 404. Terminal jobs expire after 24 hours by default.
-The API client handles submission and polling internally, so search components
-still receive `Promise<SearchResponse>`. Aborting that promise stops polling;
+The API client handles direct results and fallback polling internally, so
+search components still receive `Promise<SearchResponse>`. Aborting that promise stops polling;
 it does not cancel durable execution. No worker URL or socket is exposed.
 
 Uploads use the latest `automatic` profile. There is no upload-time profile

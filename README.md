@@ -113,8 +113,18 @@ curl -F 'file=@recording.wav' -F 'query=blue bicycle' \
   -F 'mode=hybrid' http://127.0.0.1:8000/api/search/media
 ```
 
-All search POST endpoints return **202 Accepted** with `{"id":"UUID","status":"queued"}`.
-Fetch the status and result with the same workspace scope:
+Search POST endpoints wait up to **5 seconds** by default. Completed searches
+return **200 OK** with the search result directly; failures during the wait
+return 422 for invalid inputs or 503 for processing failures. Slower searches
+return **202 Accepted** with `{"id":"UUID","status":"queued"}`. Set
+`SEARCH_QUERY_WAIT_SECONDS` between 0 and 5 to configure the wait; 0 disables
+it. Completion uses transactional Postgres notifications, with database checks
+as a fallback if the listener is unavailable. No database transaction stays
+open while waiting, though each waiting request uses one listener connection.
+Restart the API and worker after changing the wait configuration or updating
+completion-notification code. This change requires no additional migration.
+
+For a 202 response, fetch the status and result with the same workspace scope:
 
 ```sh
 curl 'http://127.0.0.1:8000/api/search/jobs/SEARCH_ID?workspace_id=WORKSPACE_ID'
@@ -123,8 +133,8 @@ curl 'http://127.0.0.1:8000/api/search/jobs/SEARCH_ID?workspace_id=WORKSPACE_ID'
 The response contains `status`, `result`, and `error`. Status moves through
 `queued`, `running`, optional `retry`, and `succeeded` or `failed`. `result`
 contains the search response once successful. A failed job has an error
-`code` and `message`. The frontend polls every 500 ms and stops on completion,
-failure, cancellation of its request, or after ten minutes. Stopping frontend
+`code` and `message`. For 202 responses, the frontend polls every 500 ms and
+stops on completion, failure, cancellation of its request, or after ten minutes. Stopping frontend
 polling leaves the durable job running.
 
 Search modes are `hybrid`, `semantic`, and `keyword`. Filters and channel

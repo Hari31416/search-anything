@@ -40,7 +40,9 @@ send inference work through the worker's owner process.
 - `POST /api/search` queues exact dense, PostgreSQL full-text, and normalized
   identifier retrieval with filters, per-channel weights, and optional dense
   similarity cutoffs. `/api/search/image` and `/api/search/media` queue binary
-  queries using object-storage references. All three return 202 with a job ID.
+  queries using object-storage references. All three wait up to five seconds by
+  default, configured by `SEARCH_QUERY_WAIT_SECONDS` from 0 to 5. They return
+  200 with completed results or 202 with a job ID for pending work.
   `GET /api/search/jobs/{id}` returns workspace-scoped status and results.
   Workers wake through Postgres notifications with polling fallback.
 - `GET /api/assets/{id}/content` streams the source and supports one HTTP byte

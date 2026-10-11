@@ -25,8 +25,10 @@ headings, with a separate filename GIN index and escaped normalized substring
 matching for identifiers. `/api/search` combines text, transcript, OCR, image,
 audio, and video dense channels with lexical and identifier channels.
 `/api/search/image` queues visual queries for the worker. All search endpoints
-return 202 with a durable job ID; `/api/search/jobs/{id}` returns status and
-results. API and worker share Postgres and object storage, with no shared socket.
+wait up to five seconds, returning 200 with completed results or 202 with a
+durable job ID; `/api/search/jobs/{id}` returns status and results. The wait is
+configured by `SEARCH_QUERY_WAIT_SECONDS`, from 0 to 5, with 0 disabling it.
+API and worker share Postgres and object storage, with no shared socket.
 
 Audio and video files are probed with local FFprobe. The worker splits media
 into overlapping windows and uses FFmpeg to decode mono 16 kHz audio and

@@ -401,6 +401,7 @@ async def search_workspace(
     if asset_ids is not None:
         base = base.where(Asset.id.in_(asset_ids))
 
+    resolved_weights = {**DEFAULT_WEIGHTS, **(weights or {})}
     channels: dict[str, list[Candidate]] = {}
     if mode in {"semantic", "hybrid"} and vector is not None:
         kinds = {
@@ -417,6 +418,8 @@ async def search_workspace(
             ),
         }[representation_mode]
         for kind in kinds:
+            if resolved_weights[kind] <= 0:
+                continue
             distance = Embedding.vector.cosine_distance(vector)
             rows = (
                 await session.execute(
@@ -428,7 +431,7 @@ async def search_workspace(
                         Embedding.model_revision == model_revision,
                         Embedding.dimensions == DIMENSIONS,
                     )
-                    .order_by(distance)
+                    .order_by(distance, Asset.id, Segment.ordinal, Representation.id)
                     .limit(candidate_limit * 3 if kind == "ocr" else candidate_limit)
                 )
             ).all()
@@ -449,69 +452,74 @@ async def search_workspace(
         and representation_mode != "combined"
         and query.strip()
     ):
-        tsquery = func.websearch_to_tsquery("simple", query.strip())
-        body_vector = func.setweight(
-            func.to_tsvector(
-                literal_column("'simple'"),
-                func.coalesce(Representation.text_content, ""),
-            ),
-            literal_column("'B'"),
-        )
-        heading_vector = func.setweight(
-            func.to_tsvector(
-                literal_column("'simple'"),
-                func.coalesce(
-                    literal_column("representations.metadata->>'heading'"), ""
+        if resolved_weights["lexical"] > 0:
+            tsquery = func.websearch_to_tsquery("simple", query.strip())
+            body_vector = func.setweight(
+                func.to_tsvector(
+                    literal_column("'simple'"),
+                    func.coalesce(Representation.text_content, ""),
                 ),
-            ),
-            literal_column("'A'"),
-        )
-        document = body_vector.op("||")(heading_vector)
-        filename_vector = func.to_tsvector(
-            literal_column("'simple'"), func.coalesce(Asset.filename, "")
-        )
-        rank = func.ts_rank_cd(document, tsquery) + 2.0 * func.ts_rank_cd(
-            filename_vector, tsquery
-        )
-        rows = (
-            await session.execute(
-                base.where(
-                    document.op("@@")(tsquery) | filename_vector.op("@@")(tsquery)
-                )
-                .order_by(rank.desc(), Asset.id, Segment.ordinal, Representation.id)
-                .limit(candidate_limit)
+                literal_column("'B'"),
             )
-        ).all()
-        channels["lexical"] = [_candidate(*row) for row in rows]
-        normalized = " ".join(query.split()).casefold()
-        filename_rows = (
-            await session.execute(
-                base.where(
-                    func.lower(Asset.filename).contains(normalized, autoescape=True)
-                )
-                .distinct(Asset.id)
-                .order_by(
-                    Asset.id,
-                    case((Representation.text_content.is_not(None), 0), else_=1),
-                    Segment.ordinal,
-                    Representation.id,
-                )
-                .limit(candidate_limit)
+            heading_vector = func.setweight(
+                func.to_tsvector(
+                    literal_column("'simple'"),
+                    func.coalesce(
+                        literal_column("representations.metadata->>'heading'"), ""
+                    ),
+                ),
+                literal_column("'A'"),
             )
-        ).all()
-        channels["filename"] = [_candidate(*row) for row in filename_rows]
-        exact_rows = (
-            await session.execute(
-                base.where(
-                    func.lower(Representation.text_content).contains(
-                        normalized, autoescape=True
+            document = body_vector.op("||")(heading_vector)
+            filename_vector = func.to_tsvector(
+                literal_column("'simple'"), func.coalesce(Asset.filename, "")
+            )
+            rank = func.ts_rank_cd(document, tsquery) + 2.0 * func.ts_rank_cd(
+                filename_vector, tsquery
+            )
+            rows = (
+                await session.execute(
+                    base.where(
+                        document.op("@@")(tsquery) | filename_vector.op("@@")(tsquery)
                     )
+                    .order_by(rank.desc(), Asset.id, Segment.ordinal, Representation.id)
+                    .limit(candidate_limit)
                 )
-                .order_by(Asset.filename, Asset.id, Segment.ordinal, Representation.id)
-                .limit(candidate_limit)
-            )
-        ).all()
-        channels["identifier"] = [_candidate(*row) for row in exact_rows]
+            ).all()
+            channels["lexical"] = [_candidate(*row) for row in rows]
+        normalized = " ".join(query.split()).casefold()
+        if resolved_weights["filename"] > 0:
+            filename_rows = (
+                await session.execute(
+                    base.where(
+                        func.lower(Asset.filename).contains(normalized, autoescape=True)
+                    )
+                    .distinct(Asset.id)
+                    .order_by(
+                        Asset.id,
+                        case((Representation.text_content.is_not(None), 0), else_=1),
+                        Segment.ordinal,
+                        Representation.id,
+                    )
+                    .limit(candidate_limit)
+                )
+            ).all()
+            channels["filename"] = [_candidate(*row) for row in filename_rows]
+        if resolved_weights["identifier"] > 0:
+            exact_rows = (
+                await session.execute(
+                    base.where(
+                        func.lower(Representation.text_content).contains(
+                            normalized, autoescape=True
+                        )
+                    )
+                    .order_by(
+                        Asset.filename, Asset.id, Segment.ordinal, Representation.id
+                    )
+                    .limit(candidate_limit)
+                )
+            ).all()
+            channels["identifier"] = [_candidate(*row) for row in exact_rows]
 
     fused = reciprocal_rank_fusion(channels, weights)
     return group_assets(fused)[:limit]

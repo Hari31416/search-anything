@@ -5,6 +5,10 @@ Fixed-model retrieval experiments from 2026-10-11 are recorded in
 query gains and regressions, paired uncertainty, runtime and storage. Production
 defaults remain unchanged.
 
+The subsequent confidence-metadata, window-termination, channel-skipping and
+stable-ordering fixes are described in
+[the follow-up validation](retrieval-fixes-2026-10-11.md).
+
 This collection measures changes to Search Anything. It uses four retrieval
 datasets included in MMEB-V3, with a smaller, frozen candidate collection.
 Scores are not comparable to the MMEB leaderboard.

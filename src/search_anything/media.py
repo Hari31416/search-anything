@@ -181,7 +181,10 @@ def window_ranges(
     result: list[MediaWindow] = []
     start = 0.0
     while start < duration:
-        result.append(MediaWindow(start, min(duration, start + window)))
+        end = min(duration, start + window)
+        result.append(MediaWindow(start, end))
+        if end >= duration:
+            break
         start += step
     return result
 
@@ -353,6 +356,19 @@ def load_whisper(path: Path, device: InferenceDevice = "auto") -> Any:
         # first so word timestamps remain available with GPU inference.
         whisper.timing.dtw = _whisper_dtw_cpu
     return model
+
+
+def whisper_confidence(segment: dict[str, Any]) -> dict[str, float]:
+    """Keep available finite decoder signals without inventing missing values."""
+    result = {}
+    for key in ("avg_logprob", "no_speech_prob", "compression_ratio"):
+        try:
+            value = float(segment[key])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if math.isfinite(value):
+            result[key] = value
+    return result
 
 
 def transcribe_window(

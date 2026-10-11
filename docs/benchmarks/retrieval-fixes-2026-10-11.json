@@ -1,0 +1,281 @@
+{
+  "split": "dev",
+  "index_writes": false,
+  "datasets": {
+    "search-benchmark": {
+      "index_identity": "99fa247c062d113f97b5cb7cfb697a808a6875641f8cf42cdaed3b73488358e5",
+      "manifest_sha256": "6c6df40b921c1bcec09df0dd1359cb68a8c7fd6c3f1ecda8093f911d5ee4ced5",
+      "retrieval_source_sha256": "05604b2a4f95cebe288ad61d14f3873c55ba2dfc926ed846cf9520b23dab6ce1",
+      "current_vs_previous": {
+        "changed_rankings": 0,
+        "tasks": {
+          "audio": {
+            "before": {
+              "recall@5": 0.43333333333333335,
+              "recall@10": 0.5666666666666667,
+              "mrr@10": 0.2965608465608466,
+              "ndcg@10": 0.3597442203420178
+            },
+            "after": {
+              "recall@5": 0.43333333333333335,
+              "recall@10": 0.5666666666666667,
+              "mrr@10": 0.2965608465608466,
+              "ndcg@10": 0.3597442203420178
+            },
+            "mrr_delta": 0.0
+          },
+          "image": {
+            "before": {
+              "recall@5": 1.0,
+              "recall@10": 1.0,
+              "mrr@10": 0.9055555555555556,
+              "ndcg@10": 0.9297596420238124
+            },
+            "after": {
+              "recall@5": 1.0,
+              "recall@10": 1.0,
+              "mrr@10": 0.9055555555555556,
+              "ndcg@10": 0.9297596420238124
+            },
+            "mrr_delta": 0.0
+          },
+          "text": {
+            "before": {
+              "recall@5": 0.9666666666666667,
+              "recall@10": 0.9666666666666667,
+              "mrr@10": 0.9277777777777778,
+              "ndcg@10": 0.937697658452382
+            },
+            "after": {
+              "recall@5": 0.9666666666666667,
+              "recall@10": 0.9666666666666667,
+              "mrr@10": 0.9277777777777778,
+              "ndcg@10": 0.937697658452382
+            },
+            "mrr_delta": 0.0
+          },
+          "video": {
+            "before": {
+              "recall@5": 0.9,
+              "recall@10": 0.9,
+              "mrr@10": 0.8,
+              "ndcg@10": 0.8251380792287053
+            },
+            "after": {
+              "recall@5": 0.9,
+              "recall@10": 0.9,
+              "mrr@10": 0.8,
+              "ndcg@10": 0.8251380792287053
+            },
+            "mrr_delta": 0.0
+          }
+        }
+      },
+      "tail_ablation_vs_current": {
+        "changed_rankings": 23,
+        "tasks": {
+          "audio": {
+            "before": {
+              "recall@5": 0.43333333333333335,
+              "recall@10": 0.5666666666666667,
+              "mrr@10": 0.2965608465608466,
+              "ndcg@10": 0.3597442203420178
+            },
+            "after": {
+              "recall@5": 0.5,
+              "recall@10": 0.6333333333333333,
+              "mrr@10": 0.31392857142857145,
+              "ndcg@10": 0.38883157570903015
+            },
+            "mrr_delta": 0.017367724867724865
+          },
+          "image": {
+            "before": {
+              "recall@5": 1.0,
+              "recall@10": 1.0,
+              "mrr@10": 0.9055555555555556,
+              "ndcg@10": 0.9297596420238124
+            },
+            "after": {
+              "recall@5": 1.0,
+              "recall@10": 1.0,
+              "mrr@10": 0.9055555555555556,
+              "ndcg@10": 0.9297596420238124
+            },
+            "mrr_delta": 0.0
+          },
+          "text": {
+            "before": {
+              "recall@5": 0.9666666666666667,
+              "recall@10": 0.9666666666666667,
+              "mrr@10": 0.9277777777777778,
+              "ndcg@10": 0.937697658452382
+            },
+            "after": {
+              "recall@5": 0.9666666666666667,
+              "recall@10": 0.9666666666666667,
+              "mrr@10": 0.9277777777777778,
+              "ndcg@10": 0.937697658452382
+            },
+            "mrr_delta": 0.0
+          },
+          "video": {
+            "before": {
+              "recall@5": 0.9,
+              "recall@10": 0.9,
+              "mrr@10": 0.8,
+              "ndcg@10": 0.8251380792287053
+            },
+            "after": {
+              "recall@5": 0.9,
+              "recall@10": 0.9,
+              "mrr@10": 0.8,
+              "ndcg@10": 0.8251380792287053
+            },
+            "mrr_delta": 0.0
+          }
+        }
+      },
+      "excluded_representations": 33,
+      "removed_audio_windows": 31,
+      "current_seconds": 5.1688873340026475,
+      "tail_ablation_seconds": 5.711951750039589,
+      "current_report_sha256": "db8cb5f8bf87113d8b105dcbdeb4f6e12809ce8bedbd8cc9ddf560bc8644533e",
+      "tail_report_sha256": "a4085d3fc17456566bceb99486b7754e1f78e74e9fcab25884ba4bbf071c7367"
+    },
+    "spoken-squad-benchmark": {
+      "index_identity": "68401f9c6e1ac4c7581d5a0e9f0c97e9e83e764d45c784bc7f1477cf5dd349f7",
+      "manifest_sha256": "ed2b479cb43960fc0e712df152727871f4cbefefbb216a5498a289fc48067916",
+      "retrieval_source_sha256": "05604b2a4f95cebe288ad61d14f3873c55ba2dfc926ed846cf9520b23dab6ce1",
+      "current_vs_previous": {
+        "changed_rankings": 0,
+        "tasks": {
+          "speech": {
+            "before": {
+              "recall@5": 0.8333333333333334,
+              "recall@10": 0.8333333333333334,
+              "mrr@10": 0.6316666666666667,
+              "ndcg@10": 0.6793484651327166
+            },
+            "after": {
+              "recall@5": 0.8333333333333334,
+              "recall@10": 0.8333333333333334,
+              "mrr@10": 0.6316666666666667,
+              "ndcg@10": 0.6793484651327166
+            },
+            "mrr_delta": 0.0
+          }
+        }
+      },
+      "tail_ablation_vs_current": {
+        "changed_rankings": 3,
+        "tasks": {
+          "speech": {
+            "before": {
+              "recall@5": 0.8333333333333334,
+              "recall@10": 0.8333333333333334,
+              "mrr@10": 0.6316666666666667,
+              "ndcg@10": 0.6793484651327166
+            },
+            "after": {
+              "recall@5": 0.8333333333333334,
+              "recall@10": 0.8333333333333334,
+              "mrr@10": 0.6316666666666667,
+              "ndcg@10": 0.6793484651327166
+            },
+            "mrr_delta": 0.0
+          }
+        }
+      },
+      "excluded_representations": 11,
+      "removed_audio_windows": 6,
+      "current_seconds": 0.7935013750102371,
+      "tail_ablation_seconds": 0.8142764170188457,
+      "current_report_sha256": "af5e21167f92f1fe2584550d942e5beda8eeb1c1ed3588eca1e2a84391460fd0",
+      "tail_report_sha256": "ebe1b1d8cb7ea0af0e1a8d83f6add70fc440f8638588c642c6b456c87df28855"
+    },
+    "expanded-benchmark": {
+      "index_identity": "bd4ad7cd138f6276681e13d5ed58751a6504711375f2201474f0fb70d3e49ec1",
+      "manifest_sha256": "7c1b98f6e729068a157c8768b5f7548588f221fd54e7b39165821bf081737c88",
+      "retrieval_source_sha256": "05604b2a4f95cebe288ad61d14f3873c55ba2dfc926ed846cf9520b23dab6ce1",
+      "current_vs_previous": {
+        "changed_rankings": 0,
+        "tasks": {
+          "image_hard": {
+            "before": {
+              "recall@5": 0.7333333333333333,
+              "recall@10": 0.8666666666666667,
+              "mrr@10": 0.5692460317460317,
+              "ndcg@10": 0.6415709958426288
+            },
+            "after": {
+              "recall@5": 0.7333333333333333,
+              "recall@10": 0.8666666666666667,
+              "mrr@10": 0.5692460317460317,
+              "ndcg@10": 0.6415709958426288
+            },
+            "mrr_delta": 0.0
+          },
+          "natural_speech": {
+            "before": {
+              "recall@5": 1.0,
+              "recall@10": 1.0,
+              "mrr@10": 1.0,
+              "ndcg@10": 1.0
+            },
+            "after": {
+              "recall@5": 1.0,
+              "recall@10": 1.0,
+              "mrr@10": 1.0,
+              "ndcg@10": 1.0
+            },
+            "mrr_delta": 0.0
+          }
+        }
+      },
+      "tail_ablation_vs_current": {
+        "changed_rankings": 28,
+        "tasks": {
+          "image_hard": {
+            "before": {
+              "recall@5": 0.7333333333333333,
+              "recall@10": 0.8666666666666667,
+              "mrr@10": 0.5692460317460317,
+              "ndcg@10": 0.6415709958426288
+            },
+            "after": {
+              "recall@5": 0.7333333333333333,
+              "recall@10": 0.8666666666666667,
+              "mrr@10": 0.5692460317460317,
+              "ndcg@10": 0.6415709958426288
+            },
+            "mrr_delta": 0.0
+          },
+          "natural_speech": {
+            "before": {
+              "recall@5": 1.0,
+              "recall@10": 1.0,
+              "mrr@10": 1.0,
+              "ndcg@10": 1.0
+            },
+            "after": {
+              "recall@5": 1.0,
+              "recall@10": 1.0,
+              "mrr@10": 0.975,
+              "ndcg@10": 0.9810225519357798
+            },
+            "mrr_delta": -0.025000000000000022
+          }
+        }
+      },
+      "excluded_representations": 231,
+      "removed_audio_windows": 99,
+      "current_seconds": 1.9805900419596583,
+      "tail_ablation_seconds": 1.87835787498625,
+      "current_report_sha256": "2abd543c0cbf27c6e690b3f21bdd20901acf8bad5f7eddd444a6a8164c16edff",
+      "tail_report_sha256": "66387851ea9198466d38fd108d0c5d54b11078e4db9b7589dbb7b632fde3ebd4"
+    }
+  },
+  "note": "Current SQL validated on unchanged indexes. Tail ablation excludes redundant audio windows and their ASR segments before candidate limits; it is not a full reindex. Existing video OCR is unchanged. Confidence storage is covered by worker tests, not backfilled.",
+  "validation_source_sha256": "7f017107194236fde721efbb2d4fb0887beddd56ddae4a508ae5f255f1096db5"
+}

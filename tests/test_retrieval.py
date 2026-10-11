@@ -346,3 +346,66 @@ async def test_image_search_keeps_strong_visual_match_above_ocr_supported_photo(
         for match in asset["matches"]
         for representation in match["representations"]
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "enabled", ["audio", "lexical", "identifier", "filename", None]
+)
+async def test_disabled_channels_do_not_execute_database_queries(enabled):
+    from unittest.mock import AsyncMock, MagicMock
+    from search_anything.retrieval import DEFAULT_WEIGHTS, search_workspace
+
+    session = AsyncMock()
+    result = MagicMock()
+    result.all.return_value = []
+    session.execute.return_value = result
+    weights = {channel: float(channel == enabled) for channel in DEFAULT_WEIGHTS}
+    await search_workspace(
+        session,
+        uuid4(),
+        query="moon",
+        vector=[0.0] * 768,
+        mode="hybrid",
+        limit=10,
+        candidate_limit=60,
+        weights=weights,
+    )
+    assert session.execute.await_count == (1 if enabled else 0)
+    if enabled == "audio":
+        statement = session.execute.call_args.args[0]
+        assert "audio" in statement.compile().params.values()
+    elif enabled:
+        sql = str(session.execute.call_args.args[0])
+        assert {
+            "lexical": "websearch_to_tsquery",
+            "filename": "lower(assets.filename)",
+            "identifier": "lower(representations.text_content)",
+        }[enabled] in sql
+
+
+@pytest.mark.asyncio
+async def test_dense_ties_have_stable_asset_segment_and_representation_order():
+    from unittest.mock import AsyncMock, MagicMock
+    from sqlalchemy.dialects import postgresql
+    from search_anything.retrieval import search_workspace
+
+    session = AsyncMock()
+    result = MagicMock()
+    result.all.return_value = []
+    session.execute.return_value = result
+    await search_workspace(
+        session,
+        uuid4(),
+        query="moon",
+        vector=[0.0] * 768,
+        mode="semantic",
+        limit=10,
+        candidate_limit=60,
+    )
+    # Each dense channel needs the same deterministic order before truncation.
+    for call in session.execute.call_args_list:
+        sql = str(call.args[0].compile(dialect=postgresql.dialect()))
+        order = sql.split("ORDER BY ")[1].split("LIMIT")[0]
+        assert "assets.id, segments.ordinal, representations.id" in order
+        assert order.index("<=>") < order.index("assets.id")

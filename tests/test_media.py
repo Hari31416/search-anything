@@ -174,3 +174,55 @@ def test_video_frames_preserve_timestamps_after_nonzero_seek(tmp_path: Path) -> 
         frames_per_second=0.5,
     )
     assert len(short_frames.paths) == 1
+
+
+@pytest.mark.parametrize(
+    "duration,expected",
+    [
+        (0, []),
+        (5, [(0, 5)]),
+        (25, [(0, 25)]),
+        (30, [(0, 30)]),
+        (31, [(0, 30), (25, 31)]),
+        (55, [(0, 30), (25, 55)]),
+        (60, [(0, 30), (25, 55), (50, 60)]),
+    ],
+)
+def test_media_windows_stop_after_full_coverage(duration, expected):
+    from search_anything.media import window_ranges
+
+    windows = window_ranges(duration, "speech_lectures")
+    assert [(w.start, w.end) for w in windows] == expected
+    assert all(left.end >= right.start for left, right in zip(windows, windows[1:]))
+
+
+def test_missing_or_nonfinite_whisper_signals_stay_unknown():
+    from search_anything.media import whisper_confidence
+
+    assert whisper_confidence({}) == {}
+    assert (
+        whisper_confidence(
+            dict(
+                avg_logprob=float("nan"),
+                no_speech_prob=None,
+                compression_ratio=float("inf"),
+            )
+        )
+        == {}
+    )
+
+
+@pytest.mark.parametrize(
+    "preset", ["speech_lectures", "general_video", "music_sounds", "camera_footage"]
+)
+def test_full_window_termination_applies_to_each_media_preset(preset):
+    from search_anything.media import window_ranges
+
+    settings = media_settings(preset)
+    length = settings["window_seconds"]
+    step = length - settings["overlap_seconds"]
+    assert window_ranges(length, preset) == [MediaWindow(0, length)]
+    assert window_ranges(length + step, preset) == [
+        MediaWindow(0, length),
+        MediaWindow(step, length + step),
+    ]

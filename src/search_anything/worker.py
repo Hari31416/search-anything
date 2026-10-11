@@ -71,6 +71,7 @@ from search_anything.media import (
     probe_media,
     split_audio_window,
     transcribe_window,
+    whisper_confidence,
     window_ranges,
 )
 from search_anything.scheduler import LocalInferenceScheduler
@@ -775,6 +776,9 @@ class Worker:
                                         "language": transcription_language,
                                         "window_start": audio_window.start,
                                         "whisper_segment": index,
+                                        "whisper_confidence": whisper_confidence(
+                                            segment
+                                        ),
                                     },
                                     kind="transcript",
                                     time_start=start,

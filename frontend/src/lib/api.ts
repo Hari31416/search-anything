@@ -64,6 +64,60 @@ export function createApi(workspaceId?: string) {
   }
   const scopedFetch = (url: string, options?: RequestInit) =>
     fetch(scopedUrl(url), options)
+  type SearchJob = {
+    id: string
+    status: 'queued' | 'running' | 'retry' | 'succeeded' | 'failed'
+    result?: SearchResponse | null
+    error?: { code: string; message: string } | null
+  }
+  const waitForSearch = async (
+    res: Response,
+    signal?: AbortSignal
+  ): Promise<SearchResponse> => {
+    const submitted = await handleResponse<SearchJob>(res)
+    const deadline = Date.now() + 10 * 60 * 1000
+    while (true) {
+      signal?.throwIfAborted()
+      const job = await handleResponse<SearchJob>(
+        await scopedFetch(
+          `/api/search/jobs/${encodeURIComponent(submitted.id)}`,
+          { signal }
+        )
+      )
+      if (job.status === 'succeeded' && job.result) return job.result
+      if (job.status === 'failed') {
+        throw new ApiError(
+          ['ValueError', 'ContextLimitError', 'IngestionError'].includes(
+            job.error?.code ?? ''
+          )
+            ? 422
+            : 503,
+          job.error?.message || 'Search failed'
+        )
+      }
+      if (Date.now() >= deadline) {
+        throw new ApiError(
+          504,
+          'Search is still queued or processing. Try again later.'
+        )
+      }
+      await new Promise<void>((resolve, reject) => {
+        const onAbort = () => {
+          clearTimeout(timer)
+          reject(signal?.reason ?? new DOMException('Aborted', 'AbortError'))
+        }
+        const timer = setTimeout(() => {
+          signal?.removeEventListener('abort', onAbort)
+          resolve()
+        }, 500)
+        signal?.addEventListener('abort', onAbort, { once: true })
+        if (signal?.aborted) {
+          signal.removeEventListener('abort', onAbort)
+          onAbort()
+        }
+      })
+    }
+  }
   return {
     async getHealth(): Promise<ReadinessResponse> {
       const res = await scopedFetch('/health/ready')
@@ -216,7 +270,7 @@ export function createApi(workspaceId?: string) {
         body: JSON.stringify(request),
         signal,
       })
-      return handleResponse<SearchResponse>(res)
+      return waitForSearch(res, signal)
     },
 
     async searchImage(
@@ -259,7 +313,7 @@ export function createApi(workspaceId?: string) {
         body: formData,
         signal,
       })
-      return handleResponse<SearchResponse>(res)
+      return waitForSearch(res, signal)
     },
 
     async searchMedia(
@@ -302,7 +356,7 @@ export function createApi(workspaceId?: string) {
         body: formData,
         signal,
       })
-      return handleResponse<SearchResponse>(res)
+      return waitForSearch(res, signal)
     },
   }
 }

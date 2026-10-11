@@ -18,6 +18,19 @@ test('workspace clients keep requests and preview URLs isolated', async (t) => {
   const calls: string[] = []
   t.mock.method(globalThis, 'fetch', async (url: string) => {
     calls.push(url)
+    if (url.startsWith('/api/search/jobs/')) {
+      return Response.json({
+        id: 'search-id',
+        status: 'succeeded',
+        result: { results: [] },
+      })
+    }
+    if (url.startsWith('/api/search?')) {
+      return Response.json(
+        { id: 'search-id', status: 'queued' },
+        { status: 202 }
+      )
+    }
     return new Response(JSON.stringify([]), { status: 200 })
   })
   const apollo = createApi('apollo')
@@ -31,6 +44,7 @@ test('workspace clients keep requests and preview URLs isolated', async (t) => {
     '/api/assets?limit=10&offset=20&workspace_id=apollo',
     '/api/profiles?workspace_id=work',
     '/api/search?workspace_id=apollo',
+    '/api/search/jobs/search-id?workspace_id=apollo',
     '/api/assets?workspace_id=apollo',
     '/api/assets/asset/cancel?workspace_id=work',
     '/api/assets/asset/presigned?workspace_id=work',
@@ -43,4 +57,57 @@ test('workspace clients keep requests and preview URLs isolated', async (t) => {
     work.getAssetContentUrl('asset'),
     '/api/assets/asset/content?workspace_id=work'
   )
+})
+
+test('search waits through retries and returns the persisted result', async (t) => {
+  const expected = { query: 'moon', mode: 'hybrid', results: [] }
+  let polls = 0
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    if (!url.includes('/jobs/'))
+      return Response.json({ id: 'queued', status: 'queued' }, { status: 202 })
+    polls += 1
+    return Response.json(
+      polls === 1
+        ? { id: 'queued', status: 'retry', result: null }
+        : { id: 'queued', status: 'succeeded', result: expected }
+    )
+  })
+  assert.deepEqual(await api.searchText({ query: 'moon' }), expected)
+  assert.equal(polls, 2)
+})
+
+test('search exposes worker failures', async (t) => {
+  t.mock.method(globalThis, 'fetch', async (url: string) =>
+    Response.json(
+      url.includes('/jobs/')
+        ? {
+            id: 'bad',
+            status: 'failed',
+            error: { code: 'ValueError', message: 'Invalid media' },
+          }
+        : { id: 'bad', status: 'queued' }
+    )
+  )
+  await assert.rejects(
+    api.searchMedia(new File(['bad'], 'bad.wav'), {}),
+    (err: unknown) =>
+      err instanceof ApiError &&
+      err.status === 422 &&
+      err.message === 'Invalid media'
+  )
+})
+
+test('aborting a search stops polling', async (t) => {
+  const controller = new AbortController()
+  const calls: string[] = []
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    calls.push(url)
+    if (url.includes('/jobs/')) controller.abort()
+    return Response.json({ id: 'pending', status: 'running' })
+  })
+  await assert.rejects(
+    api.searchImage(new File(['image'], 'query.png'), {}, controller.signal),
+    (err: unknown) => err instanceof DOMException && err.name === 'AbortError'
+  )
+  assert.equal(calls.length, 2)
 })

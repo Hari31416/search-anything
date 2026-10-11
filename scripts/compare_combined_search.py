@@ -79,6 +79,8 @@ def search(
     try:
         with urlopen(request, timeout=180) as response:
             submitted = json.loads(response.read())
+            if response.status == 200:
+                return submitted, time.perf_counter() - started
         deadline = time.monotonic() + 600
         while True:
             with urlopen(

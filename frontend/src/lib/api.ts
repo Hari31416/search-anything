@@ -74,6 +74,7 @@ export function createApi(workspaceId?: string) {
     res: Response,
     signal?: AbortSignal
   ): Promise<SearchResponse> => {
+    if (res.status === 200) return handleResponse<SearchResponse>(res)
     const submitted = await handleResponse<SearchJob>(res)
     const deadline = Date.now() + 10 * 60 * 1000
     while (true) {

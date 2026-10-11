@@ -85,7 +85,8 @@ test('search exposes worker failures', async (t) => {
             status: 'failed',
             error: { code: 'ValueError', message: 'Invalid media' },
           }
-        : { id: 'bad', status: 'queued' }
+        : { id: 'bad', status: 'queued' },
+      { status: url.includes('/jobs/') ? 200 : 202 }
     )
   )
   await assert.rejects(
@@ -103,11 +104,37 @@ test('aborting a search stops polling', async (t) => {
   t.mock.method(globalThis, 'fetch', async (url: string) => {
     calls.push(url)
     if (url.includes('/jobs/')) controller.abort()
-    return Response.json({ id: 'pending', status: 'running' })
+    return Response.json(
+      { id: 'pending', status: 'running' },
+      { status: url.includes('/jobs/') ? 200 : 202 }
+    )
   })
   await assert.rejects(
     api.searchImage(new File(['image'], 'query.png'), {}, controller.signal),
     (err: unknown) => err instanceof DOMException && err.name === 'AbortError'
   )
   assert.equal(calls.length, 2)
+})
+
+test('completed text, image, and media submissions return without status polling', async (t) => {
+  const expected = { query: 'moon', mode: 'semantic', results: [] }
+  const urls: string[] = []
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    urls.push(url)
+    return Response.json(expected)
+  })
+  assert.deepEqual(await api.searchText({ query: 'moon' }), expected)
+  assert.deepEqual(
+    await api.searchImage(new File(['image'], 'query.png'), {}),
+    expected
+  )
+  assert.deepEqual(
+    await api.searchMedia(new File(['audio'], 'query.wav'), {}),
+    expected
+  )
+  assert.deepEqual(urls, [
+    '/api/search',
+    '/api/search/image',
+    '/api/search/media',
+  ])
 })

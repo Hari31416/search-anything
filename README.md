@@ -247,6 +247,7 @@ and stored objects when it finishes.
 
 - [Backend setup and API behavior](docs/backend-foundation.md)
 - [Ingestion, profiles, and indexing](docs/ingestion.md)
+- [Embedding and search algorithm](docs/embedding-and-search.md)
 - [Local models and hardware verification](docs/local-models.md)
 - [Frontend integration and API reference](docs/frontend-handoff.md)
 - [Search benchmarks](docs/search-benchmark.md)

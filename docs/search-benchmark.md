@@ -1,5 +1,30 @@
 # Search regression benchmark
 
+## Combined Hugging Face package
+
+The seven evaluation subsets are packaged together at
+[hari31416/search-anything-benchmark](https://huggingface.co/datasets/hari31416/search-anything-benchmark).
+We selected small subsets so indexing and repeated pipeline evaluation stay fast
+with a low storage footprint. The package has 1,150 assets and 350 queries,
+with 210 development and 140 held-out queries. It includes approximately 415 MB
+of media, frozen manifests, relevance labels, checksums, and source notices.
+Full source downloads, cached embeddings, local index state and results are excluded.
+The dataset README links to all original datasets and describes their terms.
+
+To package the existing local collections into a new output directory:
+
+```sh
+uv run python scripts/package_search_benchmark.py \
+  --output datasets/hf-search-anything-benchmark
+```
+
+The packager requires the three current frozen collections and the upstream
+notices under `datasets/hf-source-notices`, including Clotho's evaluation audio
+metadata and full caption license. It verifies asset sizes, hashes, relevance
+references and split isolation before writing the combined JSONL files. The
+dataset-card source is `docs/hf-dataset-card.md`. Existing output directories
+are never overwritten.
+
 Fixed-model retrieval experiments from 2026-10-11 are recorded in
 [the experiment report](retrieval-experiments-2026-10-11.md), including individual
 query gains and regressions, paired uncertainty, runtime and storage. Production

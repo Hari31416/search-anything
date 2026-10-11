@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     storage_presign_seconds: int = Field(default=900, ge=60, le=604800)
     max_upload_bytes: int = Field(default=2 * 1024**3, ge=1024, le=20 * 1024**3)
     default_workspace_id: UUID = UUID("8d544a89-7b01-4de5-8df2-3af82c56e33e")
-    default_workspace_name: str = "Local workspace"
+    default_workspace_name: str = "Default workspace"
     job_lease_seconds: int = Field(default=60, ge=5, le=3600)
     job_poll_seconds: float = Field(default=1.0, ge=0.1, le=30.0)
     job_max_attempts: int = Field(default=5, ge=1, le=20)

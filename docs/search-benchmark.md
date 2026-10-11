@@ -1,4 +1,4 @@
-# Local search regression benchmark
+# Search regression benchmark
 
 Fixed-model retrieval experiments from 2026-10-11 are recorded in
 [the experiment report](retrieval-experiments-2026-10-11.md), including individual

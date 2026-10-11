@@ -2,7 +2,7 @@
 
 ## Task and scope
 
-Build phase 4 of Search Anything, a local application for searching documents,
+Build phase 4 of Search Anything, a multimodal search application for documents,
 images, audio, and video. Backend phases 0–3 are complete. The previous agent
 stopped before frontend implementation at the user's request. This document
 hands off that work; start implementation when the user assigns it to you.

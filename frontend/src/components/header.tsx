@@ -151,7 +151,7 @@ export function Header({ activeTab, onSelectTab }: HeaderProps) {
                 )}
                 <div className="flex justify-between gap-4">
                   <dt className="text-muted-foreground">Processing</dt>
-                  <dd>Local, single-owner inference</dd>
+                  <dd>Worker-managed inference</dd>
                 </div>
                 <div className="flex justify-between gap-4">
                   <dt className="text-muted-foreground">Search</dt>

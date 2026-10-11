@@ -1,7 +1,7 @@
 # Backend foundation
 
-Phase 1 provides the local API, persistence, object storage, and durable worker
-foundation. Phase 2 supports structural extraction and local indexing for the
+Phase 1 provides the API, persistence, object storage, and durable worker
+foundation. Phase 2 supports structural extraction and indexing for the
 document and image formats in `docs/ingestion.md`, plus bounded audio/video
 transcription, frame OCR, and timed representations. Profile, status, retry,
 cancel, and reprocess APIs are available. Phase 3 now includes hybrid text

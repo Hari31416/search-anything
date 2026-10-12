@@ -1,4 +1,4 @@
-"""Create the workspace-scoped search data model."""
+"""Create the workspace-scoped data model with lexical and durable search."""
 
 from alembic import op
 import sqlalchemy as sa
@@ -91,6 +91,12 @@ def upgrade() -> None:
     )
     op.create_index(
         "ix_assets_filename_normalized", "assets", [sa.text("lower(filename)")]
+    )
+    op.create_index(
+        "ix_assets_filename_lexical",
+        "assets",
+        [sa.text("to_tsvector('simple', coalesce(filename, ''))")],
+        postgresql_using="gin",
     )
 
     op.create_table(
@@ -197,7 +203,12 @@ def upgrade() -> None:
     op.create_index(
         "ix_representations_lexical",
         "representations",
-        [sa.text("to_tsvector('simple', coalesce(text_content, ''))")],
+        [
+            sa.text(
+                "(setweight(to_tsvector('simple', coalesce(text_content, '')), 'B') "
+                "|| setweight(to_tsvector('simple', coalesce(metadata->>'heading', '')), 'A'))"
+            )
+        ],
         postgresql_using="gin",
     )
 
@@ -253,6 +264,14 @@ def upgrade() -> None:
         "jobs",
         sa.Column("id", sa.Uuid(), primary_key=True),
         sa.Column(
+            "workspace_id",
+            sa.Uuid(),
+            sa.ForeignKey(
+                "workspaces.id", name="fk_jobs_workspace", ondelete="CASCADE"
+            ),
+            nullable=True,
+        ),
+        sa.Column(
             "asset_id", sa.Uuid(), sa.ForeignKey("assets.id", ondelete="CASCADE")
         ),
         sa.Column(
@@ -270,6 +289,7 @@ def upgrade() -> None:
             server_default=sa.text("'{}'::jsonb"),
         ),
         sa.Column("idempotency_key", sa.String(256), nullable=False),
+        sa.Column("result", postgresql.JSONB(), nullable=True),
         sa.Column("attempts", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("max_attempts", sa.Integer(), nullable=False, server_default="5"),
         sa.Column("progress", sa.Float(), nullable=False, server_default="0"),
@@ -311,6 +331,7 @@ def upgrade() -> None:
         ["status", "priority", "available_at", "lease_expires_at"],
     )
     op.create_index("ix_jobs_asset_generation", "jobs", ["asset_id", "generation_id"])
+    op.create_index("ix_jobs_workspace_id", "jobs", ["workspace_id"])
 
 
 def downgrade() -> None:

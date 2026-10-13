@@ -8,3 +8,4 @@ logs/
 
 # Local demo datasets and downloaded source media
 /datasets/
+.DS_Store

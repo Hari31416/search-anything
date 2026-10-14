@@ -1,8 +1,9 @@
 # Local model compatibility
 
 The reference machine is a MacBook Pro with an M4 Pro, 12 CPU cores, and 24 GB
-of memory. Inference defaults to Apple Metal via PyTorch MPS when available,
-with CPU as the automatic fallback. Both models retain float32. The embedding
+of memory. Embedding inference defaults to Apple Metal via PyTorch MPS when
+available, with CPU as the automatic fallback. Worker Whisper inference defaults
+to CPU. Both models retain float32. The embedding
 model card prohibits float16. No application data is sent to a hosted inference
 service.
 
@@ -12,8 +13,9 @@ Only the pinned tokenizer is loaded in the worker for text chunk planning.
 Whisper still runs inside the worker. `make start-worker` starts the embedding
 service first; `make stop-embedding` stops the process managed by this checkout.
 
-Set `SEARCH_EMBEDDING_DEVICE` and `SEARCH_WHISPER_DEVICE` to `auto` (default),
-`mps`, or `cpu`. Explicit `mps` fails if the GPU is unavailable. Device selection
+`SEARCH_EMBEDDING_DEVICE` defaults to `auto`, and `SEARCH_WHISPER_DEVICE`
+defaults to `cpu`. Set either to `auto`, `mps`, `cuda`, or `cpu` to override it.
+Explicit GPU selection fails if the requested accelerator is unavailable. Device selection
 is logged when each model loads. Restart the worker and embedding service after changing settings.
 `SEARCH_EMBEDDING_DEVICE` configures the service launched by Make, or the
 original adapter when `SEARCH_EMBEDDING_BACKEND=local` is explicitly selected.
@@ -39,6 +41,50 @@ The embedding revision is pinned in the command and smoke script. Download the
 model once with Hugging Face tooling if it is not already in the local cache.
 Run the smoke script with `HF_HUB_OFFLINE=1` after that download. Pass a local
 Whisper checkpoint path to avoid Whisper's download-on-first-use behavior.
+
+## Worker installation
+
+For a worker that uses the embedding API, install the runtime dependencies:
+
+```sh
+uv sync --locked --no-dev
+uv run --no-dev search-anything worker
+```
+
+The default installation excludes Sentence Transformers, Torchvision, and
+Librosa. PyTorch remains required for Whisper tiny, and Transformers remains
+required for the pinned tokenizer. FFmpeg/ffprobe and Tesseract with the
+configured language data must be installed on the worker host.
+
+On Linux and Windows, uv installs PyTorch and optional Torchvision from the
+explicit PyTorch CPU index, excluding CUDA and NVIDIA runtime dependencies.
+macOS uses the standard PyPI wheels, which also support MPS; Whisper still
+defaults to CPU. The embedding service has its own environment and accelerator
+configuration. Existing `.env` files override the new default, so set
+`SEARCH_WHISPER_DEVICE=cpu` there and restart the worker to apply it.
+
+Set `SEARCH_EMBEDDING_API_URL` to the running service. The worker needs only
+the tokenizer files from the pinned snapshot at `SEARCH_EMBEDDING_MODEL_PATH`,
+plus the Whisper checkpoint at `SEARCH_WHISPER_CHECKPOINT_PATH`. It does not
+need the embedding weights. The tokenizer directory must retain the pinned
+revision as its name. Keeping the full cached snapshot also works.
+
+Workers default to `SEARCH_WHISPER_DEVICE=cpu`. Worker CPU and
+memory capacity depend on transcription, media decoding, OCR, and input sizes.
+The earlier 4.6 GiB measurement below includes local embedding inference and
+does not describe the API-backed worker. Worker-only memory and throughput
+have not been measured yet.
+
+For the optional local embedding adapter, smoke checks, or experiments that
+generate local embeddings, install and run with the extra:
+
+```sh
+uv sync --locked --extra local-embeddings
+uv run --extra local-embeddings search-anything worker
+```
+
+Set `SEARCH_EMBEDDING_BACKEND=local` to select that adapter. The standalone
+embedding service installs its own dependencies from `embeddinggemma-api`.
 
 ## GPU verification on the reference Mac
 
@@ -82,8 +128,8 @@ TorchCodec decoder is not installed; ingestion will use FFmpeg directly.
 ## Run the local checks
 
 ```sh
-uv sync --locked
-HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 uv run python scripts/local_model_smoke.py \
+uv sync --locked --extra local-embeddings
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 uv run --extra local-embeddings python scripts/local_model_smoke.py \
   --embedding-model-path /path/to/914f7f89142e33e77833254d9c9b90c3cef7303b \
   --whisper-checkpoint /path/to/whisper-tiny.pt
 ```

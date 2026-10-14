@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     ocr_languages: str = "eng"
     whisper_checkpoint_path: Path = Path("~/.cache/whisper/tiny.pt").expanduser()
     whisper_model_name: str = "tiny"
-    whisper_device: InferenceDevice = "auto"
+    whisper_device: InferenceDevice = "cpu"
 
     @field_validator(
         "embedding_model_path",

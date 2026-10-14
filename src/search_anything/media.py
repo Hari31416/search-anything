@@ -337,7 +337,7 @@ def _whisper_dtw_cpu(matrix: Any) -> Any:
     return dtw_cpu(matrix.cpu().double().numpy())
 
 
-def load_whisper(path: Path, device: InferenceDevice = "auto") -> Any:
+def load_whisper(path: Path, device: InferenceDevice = "cpu") -> Any:
     verify_whisper_checkpoint(path)
     import whisper
 

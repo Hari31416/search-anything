@@ -27,13 +27,18 @@ The reference setup runs on macOS with:
 - Node.js and `pnpm`
 - Docker with Docker Compose
 - FFmpeg and Tesseract with English language data
-- Local EmbeddingGemma and Whisper model files
+- Pinned EmbeddingGemma tokenizer files and the Whisper tiny checkpoint for the worker
+- Full EmbeddingGemma model files on the embedding API host
 
 Embedding inference runs in the local EmbeddingGemma API on port 8001.
 The worker keeps tokenization, media extraction, OCR, and Whisper transcription.
+Whisper defaults to CPU with `SEARCH_WHISPER_DEVICE=cpu`; embedding weights and
+embedding accelerator memory belong to the API host. See the
+[worker installation requirements](docs/local-models.md#worker-installation) for
+the packages needed on a separate worker host.
 See [Local model setup](docs/local-models.md) for model versions, device
-settings, and verification commands. Inference uses Apple Metal when available
-and falls back to CPU. Allow enough disk space for model files and uploaded
+settings, and verification commands. Embedding inference uses Apple Metal when
+available and falls back to CPU. Allow enough disk space for model files and uploaded
 content.
 
 ## Getting started
@@ -107,6 +112,8 @@ Timeouts and service failures use durable job retries. Invalid inputs and
 incompatible model metadata fail without repeated retries. Combined inputs
 that exceed the processor context budget are skipped with their existing warning.
 Set `SEARCH_EMBEDDING_BACKEND=local` explicitly to use the original local adapter.
+Install its optional dependencies with `uv sync --locked --extra local-embeddings`
+and use `uv run --extra local-embeddings` when running that adapter.
 There is no automatic fallback to a local model when the API is unavailable.
 
 See [the service contract](embeddinggemma-api/README.md#search-anything-integration)
@@ -114,7 +121,7 @@ for prepared media formats. Run the HTTP integration test with cached weights:
 
 ```sh
 SEARCH_EMBEDDING_TESTS=1 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
-  uv run pytest tests/test_embedding_service_live.py -q
+  uv run --extra local-embeddings pytest tests/test_embedding_service_live.py -q
 ```
 
 This starts a temporary CPU service, checks all embedding types and chunking

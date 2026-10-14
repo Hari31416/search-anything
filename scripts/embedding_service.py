@@ -21,9 +21,17 @@ PID_FILE = ROOT / "logs/embedding.pid"
 LOG_FILE = ROOT / "logs/embedding.log"
 
 
-def ready(url: str) -> bool:
+def ready(
+    url: str,
+    api_key: str | None = None,
+    *,
+    transport: httpx.BaseTransport | None = None,
+) -> bool:
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     try:
-        with httpx.Client(timeout=2, trust_env=False) as client:
+        with httpx.Client(
+            timeout=2, headers=headers, transport=transport, trust_env=False
+        ) as client:
             response = client.get(url.rstrip("/") + "/health/ready")
             response.raise_for_status()
             if response.json().get("status") != "ready":
@@ -63,7 +71,12 @@ def start(settings: Settings) -> None:
         return
     url = str(settings.embedding_api_url)
     parsed = urlsplit(url)
-    if ready(url):
+    api_key = (
+        settings.embedding_api_keys[0].get_secret_value()
+        if settings.embedding_api_keys
+        else None
+    )
+    if ready(url, api_key=api_key):
         print(f"Embedding service ready at {url}")
         return
     if (
@@ -120,7 +133,7 @@ def start(settings: Settings) -> None:
         while time.monotonic() < deadline:
             if process.poll() is not None:
                 raise RuntimeError(f"Embedding service exited. See {LOG_FILE}")
-            if ready(url):
+            if ready(url, api_key=api_key):
                 print(f"Embedding service started at {url}; logs: {LOG_FILE}")
                 return
             time.sleep(0.25)
@@ -171,8 +184,13 @@ def main() -> None:
     elif settings.embedding_backend != "api":
         print("Embedding backend: local")
     else:
+        api_key = (
+            settings.embedding_api_keys[0].get_secret_value()
+            if settings.embedding_api_keys
+            else None
+        )
         print(
-            f'Embedding service: {"ready" if ready(str(settings.embedding_api_url)) else "unavailable"} at {settings.embedding_api_url}'
+            f'Embedding service: {"ready" if ready(str(settings.embedding_api_url), api_key=api_key) else "unavailable"} at {settings.embedding_api_url}'
         )
 
 

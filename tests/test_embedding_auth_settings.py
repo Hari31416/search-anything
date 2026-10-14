@@ -36,7 +36,13 @@ def test_launcher_forwards_keys_to_local_service(monkeypatch, tmp_path):
     monkeypatch.setattr(manager, "LOG_FILE", tmp_path / "embedding.log")
     monkeypatch.setattr(manager, "owned_pid", lambda: None)
     readiness = iter([False, True])
-    monkeypatch.setattr(manager, "ready", lambda url: next(readiness))
+    ready_calls = []
+
+    def mock_ready(url, api_key=None):
+        ready_calls.append((url, api_key))
+        return next(readiness)
+
+    monkeypatch.setattr(manager, "ready", mock_ready)
     launches = []
 
     def launch(*args, **kwargs):
@@ -51,3 +57,48 @@ def test_launcher_forwards_keys_to_local_service(monkeypatch, tmp_path):
         "first-key",
         "second-key",
     ]
+    assert ready_calls == [
+        ("http://127.0.0.1:8001/", "first-key"),
+        ("http://127.0.0.1:8001/", "first-key"),
+    ]
+
+
+def test_ready_sends_authorization_header():
+    import importlib.util
+    from pathlib import Path
+    import httpx
+
+    root = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "embedding_service_auth_ready_test", root / "scripts/embedding_service.py"
+    )
+    manager = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(manager)
+
+    def handle(request):
+        if request.url.path == "/health/ready":
+            return httpx.Response(200, json={"status": "ready"})
+        if request.url.path == "/v1/models":
+            auth = request.headers.get("Authorization")
+            if auth != "Bearer secret-key":
+                return httpx.Response(401, json={"detail": "Unauthorized"})
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "id": manager.MODEL_ID,
+                            "revision": manager.MODEL_REVISION,
+                            "output_dimensions": [manager.DIMENSIONS],
+                            "test_mode": False,
+                        }
+                    ]
+                },
+            )
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(handle)
+    assert not manager.ready("http://127.0.0.1:8001", transport=transport)
+    assert manager.ready(
+        "http://127.0.0.1:8001", api_key="secret-key", transport=transport
+    )

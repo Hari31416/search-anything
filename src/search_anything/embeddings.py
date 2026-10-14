@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import wave
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Sequence, Protocol
 
 import numpy as np
 
@@ -39,6 +39,14 @@ def audio_window_duration(audio_path: Path) -> float:
             f"{MAX_AUDIO_SECONDS:.0f}s to avoid processor truncation"
         )
     return duration
+
+
+class TextTokenCounter(Protocol):
+    context_tokens: int
+
+    def count_text_tokens(self, text: str) -> int: ...
+
+    def text_token_offsets(self, text: str) -> list[tuple[int, int]]: ...
 
 
 class LocalEmbeddingModel:

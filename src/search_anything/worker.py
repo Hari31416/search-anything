@@ -46,6 +46,11 @@ from search_anything.models import (
     ProcessingGeneration,
     Segment,
 )
+from search_anything.embedding_client import (
+    RemoteEmbeddingModel,
+    EmbeddingContractError,
+    EmbeddingInputError,
+)
 from search_anything.embeddings import (
     DIMENSIONS,
     MODEL_ID,
@@ -95,7 +100,7 @@ class Worker:
         self.session_factory = session_factory
         self.storage = storage
         self.scheduler = scheduler or LocalInferenceScheduler()
-        self._embedding_model: LocalEmbeddingModel | None = None
+        self._embedding_model: LocalEmbeddingModel | RemoteEmbeddingModel | None = None
         self._whisper_model: Any | None = None
         self.worker_id = f"{socket.gethostname()}-{os.getpid()}"
         self.handlers: dict[str, JobHandler] = {
@@ -114,6 +119,8 @@ class Worker:
                 tasks.create_task(self._query_cleanup_loop())
         finally:
             await self.scheduler.close()
+            if isinstance(self._embedding_model, RemoteEmbeddingModel):
+                self._embedding_model.close()
 
     async def _job_loop(self, stages: tuple[str, ...]) -> None:
         async with WorkWakeup(self.settings.database_url) as wakeup:
@@ -492,8 +499,11 @@ class Worker:
                     error,
                     delay,
                     retryable=not (
-                        job.stage == "search"
-                        and isinstance(error, (ValueError, ContextLimitError))
+                        isinstance(error, (EmbeddingContractError, EmbeddingInputError))
+                        or (
+                            job.stage == "search"
+                            and isinstance(error, (ValueError, ContextLimitError))
+                        )
                     ),
                 )
             except LeaseLost:
@@ -647,7 +657,16 @@ class Worker:
 
                 await notify_work(session)
 
-    def _model(self) -> LocalEmbeddingModel:
+    def _model(self) -> LocalEmbeddingModel | RemoteEmbeddingModel:
+        if self._embedding_model is None and self.settings.embedding_backend == "api":
+            self._embedding_model = RemoteEmbeddingModel(
+                self.settings.embedding_model_path,
+                self.settings.embedding_model_revision,
+                self.settings.embedding_context_tokens,
+                self.settings.embedding_batch_size,
+                base_url=str(self.settings.embedding_api_url),
+                timeout_seconds=self.settings.embedding_api_timeout_seconds,
+            )
         if self._embedding_model is None:
             self._embedding_model = LocalEmbeddingModel(
                 self.settings.embedding_model_path,

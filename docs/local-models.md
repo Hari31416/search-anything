@@ -6,9 +6,17 @@ with CPU as the automatic fallback. Both models retain float32. The embedding
 model card prohibits float16. No application data is sent to a hosted inference
 service.
 
+The worker uses the embedding API by default at `SEARCH_EMBEDDING_API_URL`,
+with a 120-second HTTP timeout controlled by `SEARCH_EMBEDDING_API_TIMEOUT_SECONDS`.
+Only the pinned tokenizer is loaded in the worker for text chunk planning.
+Whisper still runs inside the worker. `make start-worker` starts the embedding
+service first; `make stop-embedding` stops the process managed by this checkout.
+
 Set `SEARCH_EMBEDDING_DEVICE` and `SEARCH_WHISPER_DEVICE` to `auto` (default),
 `mps`, or `cpu`. Explicit `mps` fails if the GPU is unavailable. Device selection
-is logged when each model loads. Restart the worker after changing settings.
+is logged when each model loads. Restart the worker and embedding service after changing settings.
+`SEARCH_EMBEDDING_DEVICE` configures the service launched by Make, or the
+original adapter when `SEARCH_EMBEDDING_BACKEND=local` is explicitly selected.
 The macOS execution sandbox hides MPS on this machine; a normal host process
 can access it. The earlier CPU-only check was run inside that sandbox.
 

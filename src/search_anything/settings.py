@@ -3,8 +3,9 @@
 from functools import lru_cache
 from pathlib import Path
 from uuid import UUID
+from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import AnyHttpUrl, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from search_anything.devices import InferenceDevice
@@ -36,6 +37,9 @@ class Settings(BaseSettings):
     query_wait_seconds: float = Field(default=5.0, ge=0, le=5)
     query_retention_hours: int = Field(default=24, ge=1, le=720)
     job_max_attempts: int = Field(default=5, ge=1, le=20)
+    embedding_backend: Literal["api", "local"] = "api"
+    embedding_api_url: AnyHttpUrl = "http://127.0.0.1:8001"
+    embedding_api_timeout_seconds: float = Field(default=120, gt=0, le=600)
     embedding_model_path: Path = Path(
         "~/.cache/huggingface/hub/models--google--embeddinggemma-2/snapshots/"
         "914f7f89142e33e77833254d9c9b90c3cef7303b"

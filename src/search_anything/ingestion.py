@@ -18,7 +18,7 @@ from docx import Document
 from pypdf import PdfReader
 from pydantic import BaseModel, Field, model_validator
 
-from search_anything.embeddings import ContextLimitError, LocalEmbeddingModel
+from search_anything.embeddings import ContextLimitError, TextTokenCounter
 from search_anything.media import media_settings
 
 MAX_DOCUMENT_BYTES = 64 * 1024 * 1024
@@ -672,7 +672,7 @@ def extract_document(
 
 
 def _formatted_count(
-    model: LocalEmbeddingModel, title: str | None, heading: str | None, body: str
+    model: TextTokenCounter, title: str | None, heading: str | None, body: str
 ) -> int:
     prefix = "\n".join(part for part in (heading, body) if part)
     return model.count_text_tokens(f"title: {title or 'none'} | text: {prefix}")
@@ -681,7 +681,7 @@ def _formatted_count(
 def _table_chunks(
     block: TextBlock,
     title: str | None,
-    model: LocalEmbeddingModel,
+    model: TextTokenCounter,
     max_tokens: int,
 ) -> list[TextChunk] | None:
     lines = block.text.splitlines(keepends=True)
@@ -767,7 +767,7 @@ def _table_chunks(
 def chunk_blocks(
     blocks: list[TextBlock],
     title: str | None,
-    model: LocalEmbeddingModel,
+    model: TextTokenCounter,
     target_tokens: int,
     overlap_tokens: int,
 ) -> list[TextChunk]:

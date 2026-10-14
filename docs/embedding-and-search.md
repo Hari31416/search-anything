@@ -1,3 +1,8 @@
+> Embedding inference now defaults to the standalone API. The worker uses the
+> same pinned model revision, prompts, media windows, and 768-dimensional index.
+> Token counts and offsets are computed locally without loading model weights.
+> Set `SEARCH_EMBEDDING_BACKEND=local` to run the reference adapter in the worker.
+
 # Embedding and search algorithm
 
 This document describes the implementation as of 2026-10-11. Search Anything
@@ -30,11 +35,14 @@ flowchart TD
 
 ## 1. Embedding model and input formats
 
-The adapter in [`embeddings.py`](../src/search_anything/embeddings.py) loads
-`google/embeddinggemma-2` from the pinned local snapshot
-`914f7f89142e33e77833254d9c9b90c3cef7303b`. It uses SentenceTransformers in
-offline mode with float32 weights. Device selection defaults to Apple MPS
-when available, with CPU as the fallback.
+The worker's [HTTP adapter](../src/search_anything/embedding_client.py) sends
+prepared inputs to the EmbeddingGemma API. The service loads
+`google/embeddinggemma-2` at the pinned revision
+`914f7f89142e33e77833254d9c9b90c3cef7303b`, with float32 weights. The managed
+service uses offline model loading and defaults to Apple MPS when available,
+with CPU as the fallback. The original adapter in
+[`embeddings.py`](../src/search_anything/embeddings.py) remains available for
+explicit local mode and parity checks.
 
 Every embedding has 768 dimensions. Encoding requests L2 normalization, then
 checks the output shape, finite values, and a norm between 0.98 and 1.02.

@@ -29,7 +29,8 @@ The reference setup runs on macOS with:
 - FFmpeg and Tesseract with English language data
 - Local EmbeddingGemma and Whisper model files
 
-This setup runs model inference locally without a hosted inference service.
+Embedding inference runs in the local EmbeddingGemma API on port 8001.
+The worker keeps tokenization, media extraction, OCR, and Whisper transcription.
 See [Local model setup](docs/local-models.md) for model versions, device
 settings, and verification commands. Inference uses Apple Metal when available
 and falls back to CPU. Allow enough disk space for model files and uploaded
@@ -43,8 +44,8 @@ Run these commands from the repository root:
 make setup
 ```
 
-This creates `.env` from `.env.example` if needed and installs the backend and
-frontend dependencies. Review `.env` and set the model paths to your local
+This creates `.env` from `.env.example` if needed and installs the backend,
+embedding service, and frontend dependencies. Review `.env` and set the model paths to your local
 EmbeddingGemma snapshot and Whisper checkpoint. Download the models first if
 they are not already cached, following the [model setup notes](docs/local-models.md).
 
@@ -55,12 +56,13 @@ make start
 ```
 
 This starts PostgreSQL and RustFS, runs database migrations, and launches the
-API, worker, and frontend in the background.
+API, embedding service, worker, and frontend in the background.
 
 | Service            | Default address       |
 | ------------------ | --------------------- |
 | Web application    | http://127.0.0.1:5173 |
 | API                | http://127.0.0.1:8000 |
+| Embedding API      | http://127.0.0.1:8001 |
 | PostgreSQL         | localhost:55432       |
 | RustFS S3 endpoint | http://127.0.0.1:9000 |
 | RustFS console     | http://127.0.0.1:9001 |
@@ -88,10 +90,35 @@ uv sync --frozen
 PORT=8001 uv run embeddinggemma-api
 ```
 
-The worker currently uses its local embedding adapter. The service supports
-its pinned model, preformatted text, prepared audio windows, and ordered video
-frame groups. See [the service contract](embeddinggemma-api/README.md#search-anything-integration)
-for client requirements and parity tests.
+The worker defaults to `SEARCH_EMBEDDING_BACKEND=api` and connects to
+`SEARCH_EMBEDDING_API_URL=http://127.0.0.1:8001`. It loads only local tokenizer
+files for chunk planning. The service runs model inference for text, images,
+audio windows, ordered video frame groups, and combined inputs. All indexed
+outputs remain 768-dimensional, with the existing pinned model revision.
+
+`make start-worker` starts the local service first and waits for readiness.
+Use `make start-embedding`, `make stop-embedding`, and `make logs-embedding`
+to manage it separately. `make app-stop` stops the service started by this
+checkout. An already running external service is reused and is not stopped.
+For a remote service, set its URL and start it separately.
+
+The worker checks model metadata and validates returned vectors before indexing.
+Timeouts and service failures use durable job retries. Invalid inputs and
+incompatible model metadata fail without repeated retries. Combined inputs
+that exceed the processor context budget are skipped with their existing warning.
+Set `SEARCH_EMBEDDING_BACKEND=local` explicitly to use the original local adapter.
+There is no automatic fallback to a local model when the API is unavailable.
+
+See [the service contract](embeddinggemma-api/README.md#search-anything-integration)
+for prepared media formats. Run the HTTP integration test with cached weights:
+
+```sh
+SEARCH_EMBEDDING_TESTS=1 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
+  uv run pytest tests/test_embedding_service_live.py -q
+```
+
+This starts a temporary CPU service, checks all embedding types and chunking
+against the local reference adapter, and stops the test service afterward.
 
 ## Usage
 
@@ -175,7 +202,8 @@ and asset lifecycle details.
 
 The backend uses Python and FastAPI. The frontend uses React, TypeScript,
 Vite, Tailwind CSS, and shadcn/ui. The API and worker run as separate processes;
-the worker handles model inference and search execution. They communicate
+the worker handles media preparation, transcription, and search execution.
+Embedding inference runs in the standalone service. The API and worker communicate
 through durable Postgres jobs, with transactional `LISTEN/NOTIFY` wake-ups and
 polling fallback. No shared filesystem or direct worker endpoint is required.
 Image and media query inputs are stored in object storage, with only their
@@ -183,10 +211,12 @@ keys in Postgres. Separate worker loops handle searches and ingestion; the
 local model scheduler prioritizes queries between inference calls.
 
 For separate VMs or services, configure both processes with the same remote
-Postgres database and object-storage bucket. Only workers need model files,
-FFmpeg, and OCR tools. Run `make migrate` before starting the updated API and
-worker. Each worker loads its own models; size worker replicas for available
-CPU/GPU memory. Notification listeners need direct or session-pooled Postgres
+Postgres database and object-storage bucket. Workers need the pinned tokenizer,
+Whisper checkpoint, FFmpeg, and OCR tools. The embedding service owns embedding
+weights and accelerator memory. Point workers at the same service URL to share
+that model instance. Run `make migrate` before starting the updated API and
+worker. Size worker replicas for Whisper and media processing, and scale
+embedding service replicas separately. Notification listeners need direct or session-pooled Postgres
 connections. If listeners are unavailable, durable jobs still run by polling.
 
 Workers remove binary query inputs after jobs finish and purge terminal search

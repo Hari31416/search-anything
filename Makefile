@@ -4,7 +4,7 @@ COMPOSE = docker compose $(if $(wildcard .env),--env-file .env)
 UV = uv run
 
 .PHONY: help setup up down logs health migrate format check test frontend-check test-frontend live-test \
-	api worker frontend \
+	api worker frontend setup-embedding start-embedding stop-embedding logs-embedding \
 	start stop restart app-start app-stop app-restart start-backend stop-backend start-worker stop-worker start-frontend stop-frontend \
 	status logs-backend logs-worker logs-frontend clean-logs
 
@@ -30,6 +30,10 @@ help:
 	@echo "  make stop-backend   - Stop backend API"
 	@echo "  make start-worker   - Start background worker in background"
 	@echo "  make stop-worker    - Stop background worker"
+	@echo "  make setup-embedding - Install embedding service dependencies"
+	@echo "  make start-embedding - Start embedding service and wait for readiness"
+	@echo "  make stop-embedding  - Stop the managed embedding service"
+	@echo "  make logs-embedding  - Follow embedding service logs"
 	@echo "  make start-frontend - Start Vite frontend in background"
 	@echo "  make stop-frontend  - Stop Vite frontend"
 	@echo ""
@@ -57,7 +61,21 @@ help:
 setup:
 	@test -f .env || cp .env.example .env
 	uv sync
+	$(MAKE) setup-embedding
 	cd frontend && pnpm install
+
+setup-embedding:
+	@test -f embeddinggemma-api/pyproject.toml || git submodule update --init --recursive
+	uv sync --project embeddinggemma-api --frozen
+
+start-embedding:
+	$(UV) python scripts/embedding_service.py start
+
+stop-embedding:
+	$(UV) python scripts/embedding_service.py stop
+
+logs-embedding:
+	tail -f logs/embedding.log
 
 up:
 	@test -f .env || cp .env.example .env
@@ -77,7 +95,7 @@ api:
 	PORT=$${API_PORT:-8000}; \
 	$(UV) uvicorn search_anything.api:app --host 127.0.0.1 --port $$PORT --reload
 
-worker:
+worker: start-embedding
 	$(UV) search-anything worker
 
 frontend:
@@ -106,7 +124,7 @@ stop-backend:
 	pkill -f 'uvicorn search_anything.api:app' 2>/dev/null || true; \
 	echo "Backend stopped"
 
-start-worker:
+start-worker: start-embedding
 	@mkdir -p logs
 	@if pgrep -f 'search-anything worker' >/dev/null 2>&1; then \
 		echo "Worker already running"; \
@@ -158,6 +176,7 @@ app-stop:
 	@echo "Stopping application services..."
 	@$(MAKE) stop-backend
 	@$(MAKE) stop-worker
+	@$(MAKE) stop-embedding
 	@$(MAKE) stop-frontend
 	@echo "Application services stopped"
 
@@ -197,6 +216,7 @@ status:
 	@echo "Local Processes:"
 	@pgrep -fl 'search-anything|vite' || echo "No local backend/worker/frontend processes running"
 	@echo ""
+	@$(UV) python scripts/embedding_service.py status
 	@echo "Health Checks:"
 	@set -a; [ -f ./.env ] && . ./.env; set +a; \
 	curl --fail --silent --show-error http://127.0.0.1:9000/health/ready >/dev/null 2>&1 && echo "  RustFS: healthy" || echo "  RustFS: unavailable"; \
@@ -204,6 +224,7 @@ status:
 
 health:
 	@$(COMPOSE) ps
+	@$(UV) python scripts/embedding_service.py status
 	@set -a; [ -f ./.env ] && . ./.env; set +a; \
 	curl --fail --silent --show-error http://127.0.0.1:9000/health/ready && echo "  RustFS healthy" || echo "  RustFS unavailable"; \
 	curl --fail --silent --show-error http://127.0.0.1:$${API_PORT:-8000}/health/ready && echo "  Backend API ready" || echo "  Backend API unavailable"
@@ -255,6 +276,6 @@ frontend-check:
 test-frontend:
 	cd frontend && pnpm test
 
-live-test:
+live-test: start-embedding
 	SEARCH_INTEGRATION_TESTS=1 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
 		$(UV) pytest -q tests/test_infrastructure_live.py -s

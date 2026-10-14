@@ -71,6 +71,28 @@ To stop the application and Docker services:
 make stop
 ```
 
+## Embedding service submodule
+
+The standalone inference service is maintained in `embeddinggemma-api`, a Git
+submodule pointing to `hari31416/embeddinggemma-api`. Initialize it after cloning:
+
+```sh
+git submodule update --init --recursive
+```
+
+To run it separately, use a different port from the application API:
+
+```sh
+cd embeddinggemma-api
+uv sync --frozen
+PORT=8001 uv run embeddinggemma-api
+```
+
+The worker currently uses its local embedding adapter. The service supports
+its pinned model, preformatted text, prepared audio windows, and ordered video
+frame groups. See [the service contract](embeddinggemma-api/README.md#search-anything-integration)
+for client requirements and parity tests.
+
 ## Usage
 
 Open the web application, select or create a workspace, and upload files to the

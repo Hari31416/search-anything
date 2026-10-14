@@ -1,0 +1,3 @@
+[submodule "multimodal-embedding-api"]
+	path = embeddinggemma-api
+	url = https://github.com/hari31416/embeddinggemma-api.git

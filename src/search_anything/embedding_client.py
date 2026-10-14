@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from io import BytesIO
+import json
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -64,6 +66,13 @@ class LocalTextTokenizer:
             return_offsets_mapping=True,
         )
         return [tuple(pair) for pair in result["offset_mapping"]]
+
+
+@dataclass(frozen=True)
+class _MediaFile:
+    filename: str
+    data: bytes
+    content_type: str
 
 
 class RemoteEmbeddingModel:
@@ -192,25 +201,17 @@ class RemoteEmbeddingModel:
     def text_token_offsets(self, text: str) -> list[tuple[int, int]]:
         return self.text.text_token_offsets(text)
 
-    def _upload(self, data: bytes, filename: str, content_type: str) -> str:
+    def _media_file(self, data: bytes, filename: str, content_type: str) -> _MediaFile:
         if len(data) > self.max_upload_bytes:
             raise EmbeddingInputError("prepared media exceeds service upload limit")
-        result = self._request(
-            "POST", "v1/uploads", files={"file": (filename, data, content_type)}
-        )
-        upload_id = result.get("upload_id")
-        if not isinstance(upload_id, str) or not upload_id:
-            raise EmbeddingContractError(
-                "embedding service did not return an upload ID"
-            )
-        return upload_id
+        return _MediaFile(filename, data, content_type)
 
-    def _image_id(self, image: Any) -> str:
+    def _image_file(self, image: Any) -> _MediaFile:
         if not isinstance(image, Image.Image):
             image = Image.fromarray(np.asarray(image))
         buffer = BytesIO()
         image.convert("RGB").save(buffer, format="PNG")
-        return self._upload(buffer.getvalue(), "frame.png", "image/png")
+        return self._media_file(buffer.getvalue(), "frame.png", "image/png")
 
     def _frames_part(self, frames: Sequence[Any]) -> dict[str, Any]:
         if not frames:
@@ -219,17 +220,47 @@ class RemoteEmbeddingModel:
             raise ContextLimitError("video frame group exceeds service frame limit")
         return {
             "type": "video_frames",
-            "upload_ids": [self._image_id(frame) for frame in frames],
+            "files": [self._image_file(frame) for frame in frames],
         }
 
-    def _audio_part(self, path: Path) -> dict[str, str]:
+    def _audio_part(self, path: Path) -> dict[str, Any]:
         audio_window_duration(path)
         if path.stat().st_size > self.max_upload_bytes:
             raise EmbeddingInputError("prepared audio exceeds service upload limit")
         return {
             "type": "media",
-            "upload_id": self._upload(path.read_bytes(), "window.wav", "audio/wav"),
+            "file": self._media_file(path.read_bytes(), "window.wav", "audio/wav"),
         }
+
+    @staticmethod
+    def _request_inputs(items: list[dict[str, Any]]) -> dict[str, Any]:
+        files: dict[str, tuple[str, bytes, str]] = {}
+
+        def attach(media: _MediaFile) -> str:
+            name = f"media_{len(files)}"
+            files[name] = (media.filename, media.data, media.content_type)
+            return name
+
+        wire_items = []
+        for item in items:
+            wire_parts = []
+            for part in item["parts"]:
+                wire_part = dict(part)
+                if part["type"] == "media" and isinstance(part.get("file"), _MediaFile):
+                    wire_part["file"] = attach(part["file"])
+                elif part["type"] == "video_frames" and "files" in part:
+                    wire_part["files"] = [attach(frame) for frame in part["files"]]
+                wire_parts.append(wire_part)
+            wire_items.append({"id": item["id"], "parts": wire_parts})
+        payload = {
+            "items": wire_items,
+            "task": "document",
+            "prompt_mode": "none",
+            "truncate_dim": DIMENSIONS,
+        }
+        if files:
+            return {"data": {"payload": json.dumps(payload)}, "files": files}
+        return {"json": payload}
 
     def _embed(self, parts: list[list[dict[str, Any]]]) -> list[list[float]]:
         if not parts:
@@ -243,12 +274,7 @@ class RemoteEmbeddingModel:
             data = self._request(
                 "POST",
                 "v1/embeddings",
-                json={
-                    "items": items,
-                    "task": "document",
-                    "prompt_mode": "none",
-                    "truncate_dim": DIMENSIONS,
-                },
+                **self._request_inputs(items),
             )
             if (
                 data.get("model") != MODEL_ID
@@ -303,10 +329,7 @@ class RemoteEmbeddingModel:
 
     def embed_images(self, images: Sequence[Any]) -> list[list[float]]:
         return self._embed(
-            [
-                [{"type": "media", "upload_id": self._image_id(image)}]
-                for image in images
-            ]
+            [[{"type": "media", "file": self._image_file(image)}] for image in images]
         )
 
     def embed_audio(self, audio_path: Path) -> list[float]:
@@ -327,7 +350,7 @@ class RemoteEmbeddingModel:
             raise EmbeddingInputError("combined embedding requires aligned text")
         parts: list[dict[str, Any]] = [{"type": "text", "text": text.strip()}]
         if image is not None:
-            parts.append({"type": "media", "upload_id": self._image_id(image)})
+            parts.append({"type": "media", "file": self._image_file(image)})
         if audio_path is not None:
             parts.append(self._audio_part(audio_path))
         if video_frames:

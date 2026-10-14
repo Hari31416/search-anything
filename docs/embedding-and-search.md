@@ -44,6 +44,13 @@ with CPU as the fallback. The original adapter in
 [`embeddings.py`](../src/search_anything/embeddings.py) remains available for
 explicit local mode and parity checks.
 
+Text-only batches use JSON. Media batches send one multipart request containing
+prepared PNG images, WAV audio windows, and ordered video frame images alongside
+a JSON `payload` field. Media parts reference named file fields, and
+`video_frames.files` preserves the worker's frame order. The worker does not call
+`/v1/uploads`; a job retry resends the prepared bytes without depending on upload
+IDs or their expiration. The API removes request-local files after inference.
+
 Every embedding has 768 dimensions. Encoding requests L2 normalization, then
 checks the output shape, finite values, and a norm between 0.98 and 1.02.
 The default batch size is 8. Text and media share the model's embedding space,

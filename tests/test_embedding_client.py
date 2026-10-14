@@ -1,5 +1,8 @@
 """Worker HTTP contract checks without loading inference weights."""
 
+from email import policy
+from email.parser import BytesParser
+from io import BytesIO
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -35,6 +38,21 @@ class Tokenizer:
 
     def text_token_offsets(self, text):
         return [(0, len(text))]
+
+
+def request_body(request):
+    if request.headers["content-type"].startswith("application/json"):
+        return json.loads(request.content), {}
+    message = BytesParser(policy=policy.default).parsebytes(
+        ("Content-Type: " + request.headers["content-type"] + "\r\n\r\n").encode()
+        + request.content
+    )
+    fields = {
+        part.get_param("name", header="content-disposition"): part
+        for part in message.iter_parts()
+    }
+    body = json.loads(fields.pop("payload").get_payload(decode=True))
+    return body, fields
 
 
 @pytest.fixture
@@ -74,7 +92,7 @@ def server(monkeypatch):
             return httpx.Response(state.failure, json={"error": {"code": "test_error"}})
         if request.url.path == "/v1/uploads":
             return httpx.Response(200, json={"upload_id": f"upload-{len(state.calls)}"})
-        body = json.loads(request.content)
+        body, _ = request_body(request)
         vector = [1.0] + [0.0] * (DIMENSIONS - 1)
         data = {
             "model": MODEL_ID,
@@ -204,7 +222,7 @@ def test_bad_vectors_never_reach_the_index(server, change):
         model.close()
 
 
-def test_media_uploads_and_combined_frame_group(server, tmp_path):
+def test_multipart_combined_frame_group(server, tmp_path):
     import wave
 
     audio = tmp_path / "window.wav"
@@ -219,15 +237,19 @@ def test_media_uploads_and_combined_frame_group(server, tmp_path):
         model.embed_combined(
             "Scene", image=image, audio_path=audio, video_frames=[image, image]
         )
-        uploads = [r for r in server.calls if r.url.path == "/v1/uploads"]
-        assert len(uploads) == 4
-        assert b"image/png" in uploads[0].content and b"\x89PNG" in uploads[0].content
-        assert b"audio/wav" in uploads[1].content and b"RIFF" in uploads[1].content
-        body = json.loads(server.calls[-1].content)
+        assert not [r for r in server.calls if r.url.path == "/v1/uploads"]
+        requests = [r for r in server.calls if r.url.path == "/v1/embeddings"]
+        assert len(requests) == 1
+        body, files = request_body(requests[0])
+        assert len(files) == 4
         parts = body["items"][0]["parts"]
         assert [p["type"] for p in parts] == ["text", "media", "media", "video_frames"]
         assert parts[0]["text"] == "Scene"
-        assert len(parts[-1]["upload_ids"]) == 2
+        assert len(parts[-1]["files"]) == 2
+        assert len(set(parts[-1]["files"])) == 2
+        assert files[parts[1]["file"]].get_payload(decode=True).startswith(b"\x89PNG")
+        assert files[parts[2]["file"]].get_payload(decode=True).startswith(b"RIFF")
+        assert files[parts[2]["file"]].get_content_type() == "audio/wav"
         assert model.embed_images([]) == model.embed_texts([]) == []
         with pytest.raises(ContextLimitError):
             model.embed_video([image] * 5)
@@ -270,3 +292,78 @@ def test_fake_service_cannot_populate_real_index(server):
     server.metadata["data"][0]["test_mode"] = True
     with pytest.raises(EmbeddingContractError, match="test_mode"):
         client(server)
+
+
+def test_image_batches_have_request_local_file_references(server):
+    model = client(server)
+    images = [
+        Image.new("RGB", (8, 8), color)
+        for color in ["red", "blue", "green", "white", "black"]
+    ]
+    try:
+        assert len(model.embed_images(images)) == 5
+        requests = [r for r in server.calls if r.url.path == "/v1/embeddings"]
+        assert len(requests) == 3
+        seen = []
+        for request in requests:
+            body, files = request_body(request)
+            assert len(files) == len(body["items"])
+            assert {item["parts"][0]["file"] for item in body["items"]} == set(files)
+            for item in body["items"]:
+                data = files[item["parts"][0]["file"]].get_payload(decode=True)
+                with Image.open(BytesIO(data)) as image:
+                    seen.append(image.getpixel((0, 0)))
+        assert seen == [image.getpixel((0, 0)) for image in images]
+        assert not [r for r in server.calls if r.url.path == "/v1/uploads"]
+    finally:
+        model.close()
+
+
+def test_video_multipart_preserves_frame_order(server):
+    model = client(server)
+    frames = [Image.new("RGB", (8, 8), color) for color in ["red", "blue", "red"]]
+    try:
+        model.embed_video(frames)
+        body, files = request_body(server.calls[-1])
+        references = body["items"][0]["parts"][0]["files"]
+        pixels = []
+        for reference in references:
+            with Image.open(
+                BytesIO(files[reference].get_payload(decode=True))
+            ) as image:
+                pixels.append(image.getpixel((0, 0)))
+        assert pixels == [frame.getpixel((0, 0)) for frame in frames]
+    finally:
+        model.close()
+
+
+def test_media_retry_resends_bytes_without_upload_ids(server):
+    model = client(server)
+    image = Image.new("RGB", (8, 8), "red")
+    try:
+        server.failure = 503
+        with pytest.raises(EmbeddingError):
+            model.embed_images([image])
+        server.failure = None
+        assert len(model.embed_images([image])) == 1
+        requests = [r for r in server.calls if r.url.path == "/v1/embeddings"]
+        assert len(requests) == 2
+        first_body, first_files = request_body(requests[0])
+        second_body, second_files = request_body(requests[1])
+        assert first_body == second_body
+        assert first_files["media_0"].get_payload(decode=True) == second_files[
+            "media_0"
+        ].get_payload(decode=True)
+    finally:
+        model.close()
+
+
+def test_oversized_prepared_media_rejected_without_request(server):
+    model = client(server)
+    model.max_upload_bytes = 1
+    try:
+        with pytest.raises(EmbeddingInputError, match="upload limit"):
+            model.embed_images([Image.new("RGB", (8, 8))])
+        assert len(server.calls) == 2
+    finally:
+        model.close()

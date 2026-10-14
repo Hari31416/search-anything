@@ -32,14 +32,9 @@ The reference setup runs on macOS with:
 
 Embedding inference runs in the local EmbeddingGemma API on port 8001.
 The worker keeps tokenization, media extraction, OCR, and Whisper transcription.
-Whisper defaults to CPU with `SEARCH_WHISPER_DEVICE=cpu`; embedding weights and
-embedding accelerator memory belong to the API host. See the
-[worker installation requirements](docs/local-models.md#worker-installation) for
-the packages needed on a separate worker host.
-See [Local model setup](docs/local-models.md) for model versions, device
-settings, and verification commands. Embedding inference uses Apple Metal when
-available and falls back to CPU. Allow enough disk space for model files and uploaded
-content.
+Whisper defaults to CPU; the embedding service uses Apple Metal when available
+and falls back to CPU. See [Local model setup](docs/local-models.md) for model
+versions, device settings, and requirements for separate worker hosts.
 
 ## Getting started
 
@@ -97,9 +92,8 @@ PORT=8001 uv run embeddinggemma-api
 
 The worker defaults to `SEARCH_EMBEDDING_BACKEND=api` and connects to
 `SEARCH_EMBEDDING_API_URL=http://127.0.0.1:8001`. It loads only local tokenizer
-files for chunk planning. The service runs model inference for text, images,
-audio windows, ordered video frame groups, and combined inputs. All indexed
-outputs remain 768-dimensional, with the existing pinned model revision.
+files for chunk planning. The service handles embedding inference for text,
+images, audio, video, and combined inputs.
 
 `make start-worker` starts the local service first and waits for readiness.
 Use `make start-embedding`, `make stop-embedding`, and `make logs-embedding`
@@ -107,10 +101,6 @@ to manage it separately. `make app-stop` stops the service started by this
 checkout. An already running external service is reused and is not stopped.
 For a remote service, set its URL and start it separately.
 
-The worker checks model metadata and validates returned vectors before indexing.
-Timeouts and service failures use durable job retries. Invalid inputs and
-incompatible model metadata fail without repeated retries. Combined inputs
-that exceed the processor context budget are skipped with their existing warning.
 Set `SEARCH_EMBEDDING_BACKEND=local` explicitly to use the original local adapter.
 Install its optional dependencies with `uv sync --locked --extra local-embeddings`
 and use `uv run --extra local-embeddings` when running that adapter.
@@ -174,11 +164,7 @@ return **200 OK** with the search result directly; failures during the wait
 return 422 for invalid inputs or 503 for processing failures. Slower searches
 return **202 Accepted** with `{"id":"UUID","status":"queued"}`. Set
 `SEARCH_QUERY_WAIT_SECONDS` between 0 and 5 to configure the wait; 0 disables
-it. Completion uses transactional Postgres notifications, with database checks
-as a fallback if the listener is unavailable. No database transaction stays
-open while waiting, though each waiting request uses one listener connection.
-Restart the API and worker after changing the wait configuration or updating
-completion-notification code. This change requires no additional migration.
+it. Restart the API and worker after changing this setting.
 
 For a 202 response, fetch the status and result with the same workspace scope:
 
@@ -189,9 +175,7 @@ curl 'http://127.0.0.1:8000/api/search/jobs/SEARCH_ID?workspace_id=WORKSPACE_ID'
 The response contains `status`, `result`, and `error`. Status moves through
 `queued`, `running`, optional `retry`, and `succeeded` or `failed`. `result`
 contains the search response once successful. A failed job has an error
-`code` and `message`. For 202 responses, the frontend polls every 500 ms and
-stops on completion, failure, cancellation of its request, or after ten minutes. Stopping frontend
-polling leaves the durable job running.
+`code` and `message`. The frontend polls pending searches automatically.
 
 Search modes are `hybrid`, `semantic`, and `keyword`. Filters and channel
 weights apply at query time without reindexing. Media query files have a
@@ -210,32 +194,14 @@ and asset lifecycle details.
 The backend uses Python and FastAPI. The frontend uses React, TypeScript,
 Vite, Tailwind CSS, and shadcn/ui. The API and worker run as separate processes;
 the worker handles media preparation, transcription, and search execution.
-Embedding inference runs in the standalone service. The API and worker communicate
-through durable Postgres jobs, with transactional `LISTEN/NOTIFY` wake-ups and
-polling fallback. No shared filesystem or direct worker endpoint is required.
-Image and media query inputs are stored in object storage, with only their
-keys in Postgres. Separate worker loops handle searches and ingestion; the
-local model scheduler prioritizes queries between inference calls.
+Embedding inference runs in the standalone service. The API and worker
+communicate through durable Postgres jobs.
 
 For separate VMs or services, configure both processes with the same remote
 Postgres database and object-storage bucket. Workers need the pinned tokenizer,
-Whisper checkpoint, FFmpeg, and OCR tools. The embedding service owns embedding
-weights and accelerator memory. Point workers at the same service URL to share
-that model instance. Run `make migrate` before starting the updated API and
-worker. Size worker replicas for Whisper and media processing, and scale
-embedding service replicas separately. Notification listeners need direct or session-pooled Postgres
-connections. If listeners are unavailable, durable jobs still run by polling.
-
-Workers remove binary query inputs after jobs finish and purge terminal search
-jobs after `SEARCH_QUERY_RETENTION_HOURS`, which defaults to 24. Cleanup runs
-every minute while a worker is running. Configure an object-storage lifecycle
-policy for abandoned uploads under `queries/`, using a duration longer than
-your maximum queued and running job lifetime. This covers uploads whose API
-request failed before a durable job was confirmed.
-
-The short submission and status endpoints allow the API to run separately on
-serverless compute. A Lambda deployment still needs an ASGI adapter, database
-connection management, and an upload strategy suited to its request limits.
+Whisper checkpoint, FFmpeg, and OCR tools. Point workers at the same embedding
+service URL to share that model instance. See [worker setup](docs/local-models.md#worker-installation)
+and [search internals](docs/embedding-and-search.md) for more detail.
 
 To run services in separate terminals:
 

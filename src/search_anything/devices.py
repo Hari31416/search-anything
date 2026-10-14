@@ -3,12 +3,18 @@
 import logging
 from typing import Literal
 
-InferenceDevice = Literal["auto", "cpu", "mps"]
+InferenceDevice = Literal["auto", "cpu", "mps", "cuda"]
 logger = logging.getLogger(__name__)
 
 
 def resolve_device(requested: InferenceDevice = "auto") -> str:
     import torch
+
+    if requested == "cuda":
+        if not torch.cuda.is_available():
+            raise RuntimeError("CUDA GPU is unavailable to this process")
+        logger.info("Local inference device: cuda (requested: cuda)")
+        return "cuda"
 
     available = torch.backends.mps.is_available()
     if requested == "mps" and not available:

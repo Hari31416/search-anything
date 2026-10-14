@@ -33,6 +33,19 @@ def test_settings_reject_unknown_device():
         Settings(embedding_device="typo", _env_file=None)
 
 
+@pytest.mark.parametrize("available", [True, False])
+def test_explicit_cuda(monkeypatch, available):
+    monkeypatch.setenv("SEARCH_EMBEDDING_DEVICE", "cuda")
+    settings = Settings(_env_file=None)
+    assert settings.embedding_device == "cuda"
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: available)
+    if available:
+        assert resolve_device(settings.embedding_device) == "cuda"
+    else:
+        with pytest.raises(RuntimeError, match="CUDA GPU is unavailable"):
+            resolve_device(settings.embedding_device)
+
+
 def test_whisper_alignment_moves_to_cpu_before_float64(monkeypatch):
     from whisper import timing
     from search_anything.media import _whisper_dtw_cpu

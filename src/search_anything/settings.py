@@ -1,12 +1,13 @@
 """Application settings loaded from environment variables."""
 
 from functools import lru_cache
+import json
 from pathlib import Path
 from uuid import UUID
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import AnyHttpUrl, Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import AnyHttpUrl, Field, SecretStr, field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from search_anything.devices import InferenceDevice
 
@@ -39,6 +40,9 @@ class Settings(BaseSettings):
     job_max_attempts: int = Field(default=5, ge=1, le=20)
     embedding_backend: Literal["api", "local"] = "api"
     embedding_api_url: AnyHttpUrl = "http://127.0.0.1:8001"
+    embedding_api_keys: Annotated[list[SecretStr], NoDecode] = Field(
+        default_factory=list
+    )
     embedding_api_timeout_seconds: float = Field(default=120, gt=0, le=600)
     embedding_model_path: Path = Path(
         "~/.cache/huggingface/hub/models--google--embeddinggemma-2/snapshots/"
@@ -54,6 +58,20 @@ class Settings(BaseSettings):
     whisper_checkpoint_path: Path = Path("~/.cache/whisper/tiny.pt").expanduser()
     whisper_model_name: str = "tiny"
     whisper_device: InferenceDevice = "cpu"
+
+    @field_validator("embedding_api_keys", mode="before")
+    @classmethod
+    def parse_embedding_api_keys(cls, value):
+        if isinstance(value, str):
+            value = json.loads(value) if value.strip() else []
+        return value
+
+    @field_validator("embedding_api_keys")
+    @classmethod
+    def validate_embedding_api_keys(cls, value):
+        if any(not key.get_secret_value().strip() for key in value):
+            raise ValueError("API keys must not be blank")
+        return value
 
     @field_validator(
         "embedding_model_path",

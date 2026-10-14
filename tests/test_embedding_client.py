@@ -115,6 +115,21 @@ def client(server):
     return RemoteEmbeddingModel(Path("/unused"), transport=server.transport)
 
 
+@pytest.mark.parametrize("api_key", [None, "client-key"])
+def test_client_sends_configured_bearer_key(server, api_key):
+    model = RemoteEmbeddingModel(
+        Path("/unused"), transport=server.transport, api_key=api_key
+    )
+    try:
+        model.embed_texts(["hello"])
+        for request in server.calls:
+            assert request.headers.get("Authorization") == (
+                f"Bearer {api_key}" if api_key else None
+            )
+    finally:
+        model.close()
+
+
 def test_text_batching_prompt_and_query_contract(server):
     model = client(server)
     try:
@@ -272,11 +287,16 @@ def test_worker_defaults_to_api_without_loading_local_weights(monkeypatch):
         raise AssertionError("local model loaded")
 
     monkeypatch.setattr(module, "LocalEmbeddingModel", forbidden)
-    worker = Worker(Settings(_env_file=None), None, None)
+    worker = Worker(
+        Settings(_env_file=None, embedding_api_keys=["worker-key", "rotation-key"]),
+        None,
+        None,
+    )
     assert isinstance(worker._model(), Remote)
     assert worker._model() is worker._embedding_model
     assert len(calls) == 1
     assert calls[0]["base_url"] == "http://127.0.0.1:8001/"
+    assert calls[0]["api_key"] == "worker-key"
 
 
 def test_local_backend_requires_explicit_selection(monkeypatch):

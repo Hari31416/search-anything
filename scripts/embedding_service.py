@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 from pathlib import Path
 import signal
@@ -87,6 +88,9 @@ def start(settings: Settings) -> None:
         os.environ,
         HOST=parsed.hostname,
         PORT=str(parsed.port or 80),
+        SEARCH_EMBEDDING_API_KEYS=json.dumps(
+            [key.get_secret_value() for key in settings.embedding_api_keys]
+        ),
         DEVICE=settings.embedding_device,
         MODEL_ID=MODEL_ID,
         MODEL_REVISION=settings.embedding_model_revision,

@@ -92,6 +92,7 @@ class RemoteEmbeddingModel:
         *,
         base_url: str = "http://127.0.0.1:8001",
         timeout_seconds: float = 120,
+        api_key: str | None = None,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         self.text = LocalTextTokenizer(model_path, revision, context_tokens)
@@ -101,6 +102,7 @@ class RemoteEmbeddingModel:
             base_url=base_url.rstrip("/") + "/",
             timeout=httpx.Timeout(timeout_seconds, connect=min(5, timeout_seconds)),
             transport=transport,
+            headers={"Authorization": f"Bearer {api_key}"} if api_key else {},
             trust_env=False,
         )
         try:

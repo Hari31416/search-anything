@@ -95,6 +95,15 @@ The worker defaults to `SEARCH_EMBEDDING_BACKEND=api` and connects to
 files for chunk planning. The service handles embedding inference for text,
 images, audio, video, and combined inputs.
 
+Set `SEARCH_EMBEDDING_API_KEYS='["key-one","key-two"]'` in `.env` to require a
+bearer key on the embedding service's `/v1` endpoints. The local launcher passes
+the full list to the service, and the worker sends the first key as
+`Authorization: Bearer key-one`. A separately started service needs its own
+`SEARCH_EMBEDDING_API_KEYS` configuration accepting the worker's first key.
+Unset, `[]`, or an empty value disables authentication. Health checks remain
+public. Use HTTPS when connecting to a remote service and keep keys out of
+browser code and source control.
+
 `make start-worker` starts the local service first and waits for readiness.
 Use `make start-embedding`, `make stop-embedding`, and `make logs-embedding`
 to manage it separately. `make app-stop` stops the service started by this

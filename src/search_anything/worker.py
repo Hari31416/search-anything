@@ -679,6 +679,11 @@ class Worker:
                 self.settings.embedding_batch_size,
                 base_url=str(self.settings.embedding_api_url),
                 timeout_seconds=self.settings.embedding_api_timeout_seconds,
+                api_key=(
+                    self.settings.embedding_api_keys[0].get_secret_value()
+                    if self.settings.embedding_api_keys
+                    else None
+                ),
             )
         if self._embedding_model is None:
             self._embedding_model = LocalEmbeddingModel(

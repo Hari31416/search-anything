@@ -367,3 +367,61 @@ def test_oversized_prepared_media_rejected_without_request(server):
         assert len(server.calls) == 2
     finally:
         model.close()
+
+
+def test_request_byte_limit_splits_media_batch_without_reordering(server):
+    model = client(server)
+    image = Image.new("RGB", (8, 8), "red")
+    prepared = model._image_file(image)
+    first = [{"id": "0", "parts": [{"type": "media", "file": prepared}]}]
+    request = model._client.build_request(
+        "POST", "v1/embeddings", **model._request_inputs(first)
+    )
+    model.max_request_bytes = int(request.headers["content-length"])
+    try:
+        assert len(model.embed_images([image, image])) == 2
+        requests = [
+            request for request in server.calls if request.url.path == "/v1/embeddings"
+        ]
+        assert len(requests) == 2
+        assert all(
+            int(request.headers["content-length"]) <= model.max_request_bytes
+            for request in requests
+        )
+        assert all(len(request_body(request)[0]["items"]) == 1 for request in requests)
+    finally:
+        model.close()
+
+
+def test_single_item_request_limit_is_rejected_before_sending(server):
+    model = client(server)
+    model.max_request_bytes = 1
+    try:
+        with pytest.raises(EmbeddingInputError, match="request limit"):
+            model.embed_images([Image.new("RGB", (8, 8), "red")])
+        assert len(server.calls) == 2
+    finally:
+        model.close()
+
+
+def test_file_count_limit_splits_video_batches(server, tmp_path):
+    from search_anything.embeddings import MediaEmbeddingInput
+
+    model = client(server)
+    model.batch_size = 8
+    model.max_video_frames = 32
+    frame = tmp_path / "frame.png"
+    Image.new("RGB", (8, 8), "red").save(frame)
+    inputs = [MediaEmbeddingInput(frame_paths=(frame,) * 32) for _ in range(5)]
+    try:
+        assert len(model.embed_media_batch(inputs)) == 5
+        requests = [
+            request for request in server.calls if request.url.path == "/v1/embeddings"
+        ]
+        assert [len(request_body(request)[0]["items"]) for request in requests] == [
+            4,
+            1,
+        ]
+        assert [len(request_body(request)[1]) for request in requests] == [128, 32]
+    finally:
+        model.close()

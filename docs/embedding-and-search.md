@@ -51,6 +51,21 @@ a JSON `payload` field. Media parts reference named file fields, and
 `/v1/uploads`; a job retry resends the prepared bytes without depending on upload
 IDs or their expiration. The API removes request-local files after inference.
 
+Audio/video ingestion collects prepared windows into embedding batches using
+`SEARCH_EMBEDDING_BATCH_SIZE`, default 8. Audio, video, and optional combined
+representations can share a batch. Each item produces its own vector and keeps
+its original time range. The final partial batch is flushed at the end of the
+file. Media queries batch their bounded windows before pooling the resulting
+vectors by modality. Transcription and OCR still run during window preparation.
+
+The HTTP adapter respects the service item limit, total request byte limit, and
+128 multipart file limit, splitting batches when needed. Each worker batch is a
+separate scheduler job so query work can run between ingestion batches.
+Temporary audio and frame files remain available until their embeddings finish.
+If a combined input exceeds the processor budget, the worker splits the failed
+batch to isolate that item, records the failure, and retains valid base media
+representations. Base media errors still fail the job.
+
 Every embedding has 768 dimensions. Encoding requests L2 normalization, then
 checks the output shape, finite values, and a norm between 0.98 and 1.02.
 The default batch size is 8. Text and media share the model's embedding space,

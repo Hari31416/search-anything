@@ -82,7 +82,7 @@ async def test_av_indexing_preserves_whisper_confidence_without_tail_window(
                         dict(text="The moon orbits Earth.", start=2, end=4, **signals)
                     ],
                 )
-            return [0.0] * 768
+            return [([0.0] * 768, None) for _ in args[0]]
 
     worker = Worker.__new__(Worker)
     worker.scheduler = Scheduler()

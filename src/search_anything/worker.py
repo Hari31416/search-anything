@@ -57,6 +57,7 @@ from search_anything.embeddings import (
     MODEL_REVISION,
     ContextLimitError,
     LocalEmbeddingModel,
+    MediaEmbeddingInput,
     document_embedding_text,
 )
 from search_anything.ingestion import (
@@ -332,6 +333,8 @@ class Worker:
         transcript_parts: list[str] = []
         total_audio_windows = 0
         total_video_windows = 0
+        media_inputs: list[MediaEmbeddingInput] = []
+        media_modalities: list[str] = []
         with tempfile.TemporaryDirectory(prefix="search-anything-query-") as temp_dir:
             temp = Path(temp_dir)
             source = temp / "query-media"
@@ -368,13 +371,11 @@ class Worker:
                         if str(segment.get("text", "")).strip()
                     )
                     if include_embeddings:
-                        modality_vectors["audio"].append(
-                            await self.scheduler.submit(
-                                self._embed_audio, audio_path, kind="query"
-                            )
-                        )
+                        media_inputs.append(MediaEmbeddingInput(audio_path=audio_path))
+                        media_modalities.append("audio")
                     total_audio_windows += 1
-                    audio_path.unlink(missing_ok=True)
+                    if not include_embeddings:
+                        audio_path.unlink(missing_ok=True)
 
             if content_type.startswith("video/") and probe.has_video:
                 for ordinal, window in enumerate(video_windows):
@@ -387,11 +388,10 @@ class Worker:
                     )
                     try:
                         if include_embeddings and images:
-                            modality_vectors["video"].append(
-                                await self.scheduler.submit(
-                                    self._embed_video, images, kind="query"
-                                )
+                            media_inputs.append(
+                                MediaEmbeddingInput(frame_paths=tuple(decoded.paths))
                             )
+                            media_modalities.append("video")
                         for index in range(0, len(images), max(1, len(images) // 4)):
                             image_bytes = await asyncio.to_thread(
                                 self._encode_frame_png, images[index]
@@ -407,9 +407,22 @@ class Worker:
                     finally:
                         for image in images:
                             image.close()
-                        for path in decoded.paths:
-                            path.unlink(missing_ok=True)
-                        frame_dir.rmdir()
+                        if not include_embeddings:
+                            for path in decoded.paths:
+                                path.unlink(missing_ok=True)
+                            frame_dir.rmdir()
+
+            batch_size = getattr(self.settings, "embedding_batch_size", 8)
+            for offset in range(0, len(media_inputs), batch_size):
+                batch = media_inputs[offset : offset + batch_size]
+                results = await self._submit_media_batch(batch, kind="query")
+                if len(results) != len(batch):
+                    raise RuntimeError("media batch omitted embedding results")
+                for modality, (vector, failure) in zip(
+                    media_modalities[offset : offset + batch_size], results
+                ):
+                    assert vector is not None and failure is None
+                    modality_vectors[modality].append(vector)
 
         modality_pools = [
             self._pool_query_vectors(vectors)
@@ -703,6 +716,42 @@ class Worker:
     def _embed_video(self, frames: list[Any]) -> list[float]:
         return self._model().embed_video(frames)
 
+    async def _submit_media_batch(
+        self, inputs: list[MediaEmbeddingInput], *, kind: str
+    ):
+        work = asyncio.create_task(
+            self.scheduler.submit(self._embed_media_batch, inputs, kind=kind)
+        )
+        try:
+            return await asyncio.shield(work)
+        except asyncio.CancelledError:
+            # Temp directories must outlive native inference even if the owning
+            # job is cancelled while the scheduler's thread is still running.
+            try:
+                await work
+            except Exception:
+                logger.warning("Media inference failed after job cancellation.")
+            raise
+
+    def _embed_media_batch(
+        self, inputs: list[MediaEmbeddingInput]
+    ) -> list[tuple[list[float] | None, str | None]]:
+        try:
+            return [
+                (vector, None) for vector in self._model().embed_media_batch(inputs)
+            ]
+        except ContextLimitError as error:
+            if len(inputs) > 1:
+                middle = len(inputs) // 2
+                return self._embed_media_batch(
+                    inputs[:middle]
+                ) + self._embed_media_batch(inputs[middle:])
+            if not inputs[0].text:
+                raise
+            message = str(error)[:240]
+            logger.warning("Skipping combined representation: %s", message)
+            return [(None, message)]
+
     def _embed_combined(
         self,
         text: str,
@@ -792,8 +841,38 @@ class Worker:
         frame_count = 0
         ocr_seen: dict[str, int] = {}
         transcription_language: str | None = None
-        combined_count = 0
         combined_context_failures: list[str] = []
+
+        pending: list[tuple[MediaEmbeddingInput, dict[str, Any]]] = []
+        cleanup_paths: set[Path] = set()
+        batch_size = getattr(self.settings, "embedding_batch_size", 8)
+
+        def enqueue(item: MediaEmbeddingInput, record: dict[str, Any]) -> None:
+            pending.append((item, record))
+
+        async def flush(force: bool = False) -> None:
+            while len(pending) >= batch_size or (force and pending):
+                batch = pending[:batch_size]
+                results = await self._submit_media_batch(
+                    [item for item, _ in batch], kind="ingestion"
+                )
+                if len(results) != len(batch):
+                    raise RuntimeError("media batch omitted embedding results")
+                for (_, record), (vector, failure) in zip(batch, results):
+                    if failure:
+                        combined_context_failures.append(failure)
+                    else:
+                        assert vector is not None
+                        record["vector"] = vector
+                        media_records.append(record)
+                del pending[: len(batch)]
+            retained = {path for item, _ in pending for path in item.paths}
+            for path in cleanup_paths - retained:
+                path.unlink(missing_ok=True)
+                if path.parent.name.startswith("frames-"):
+                    with suppress(OSError):
+                        path.parent.rmdir()
+            cleanup_paths.intersection_update(retained)
 
         with tempfile.TemporaryDirectory(prefix="search-anything-av-") as temporary:
             temp = Path(temporary)
@@ -865,15 +944,14 @@ class Worker:
                                 )
                             )
                             transcript_count += 1
-                        audio_vector = await self.scheduler.submit(
-                            self._embed_audio, audio_path, kind="ingestion"
-                        )
-                        media_records.append(
+                        embedding_input = MediaEmbeddingInput(audio_path=audio_path)
+                        enqueue(
+                            embedding_input,
                             {
                                 "kind": "audio",
                                 "start": audio_window.start,
                                 "end": audio_window.end,
-                                "vector": audio_vector,
+                                "vector": None,
                                 "metadata": {
                                     "preset": preset,
                                     "sample_rate": 16000,
@@ -888,7 +966,7 @@ class Worker:
                                         transcription.get("segments", [])
                                     ),
                                 },
-                            }
+                            },
                         )
                         audio_window_count += 1
                         audio_inputs.append(
@@ -964,22 +1042,23 @@ class Worker:
                                         )
                                     )
                         if images:
-                            video_vector = await self.scheduler.submit(
-                                self._embed_video, images, kind="ingestion"
+                            embedding_input = MediaEmbeddingInput(
+                                frame_paths=tuple(decoded.paths)
                             )
-                            media_records.append(
+                            enqueue(
+                                embedding_input,
                                 {
                                     "kind": "video",
                                     "start": window.start,
                                     "end": window.end,
-                                    "vector": video_vector,
+                                    "vector": None,
                                     "metadata": {
                                         "preset": preset,
                                         "requested_fps": sample["video_fps"],
                                         "effective_fps": decoded.effective_fps,
                                         "frame_timestamps": decoded.timestamps,
                                     },
-                                }
+                                },
                             )
                             frame_count += len(images)
                         if options.combined_media_text:
@@ -1006,24 +1085,23 @@ class Worker:
                                     matched_frames = [
                                         images[index] for index in matched_indices
                                     ]
-                                    vector, failure = await self._try_embed_combined(
-                                        document_embedding_text(
+                                    embedding_input = MediaEmbeddingInput(
+                                        text=document_embedding_text(
                                             None, "\n".join(aligned_text)
                                         ),
-                                        kind="ingestion",
                                         audio_path=audio_input["path"],
-                                        video_frames=matched_frames or None,
+                                        frame_paths=tuple(
+                                            decoded.paths[index]
+                                            for index in matched_indices
+                                        ),
                                     )
-                                    if failure:
-                                        combined_context_failures.append(failure)
-                                        continue
-                                    assert vector is not None
-                                    media_records.append(
+                                    enqueue(
+                                        embedding_input,
                                         {
                                             "kind": "combined",
                                             "start": audio_window.start,
                                             "end": audio_window.end,
-                                            "vector": vector,
+                                            "vector": None,
                                             "metadata": {
                                                 "modalities": [
                                                     *["audio", "transcript"],
@@ -1043,74 +1121,63 @@ class Worker:
                                                 ],
                                                 "profile_preset": preset,
                                             },
-                                        }
+                                        },
                                     )
-                                    combined_count += 1
                             elif images and any(frame_ocr_texts):
-                                vector, failure = await self._try_embed_combined(
-                                    document_embedding_text(
+                                embedding_input = MediaEmbeddingInput(
+                                    text=document_embedding_text(
                                         None,
                                         "\n".join(
                                             text for text in frame_ocr_texts if text
                                         ),
                                     ),
-                                    kind="ingestion",
-                                    video_frames=images,
+                                    frame_paths=tuple(decoded.paths),
                                 )
-                                if failure:
-                                    combined_context_failures.append(failure)
-                                    continue
-                                assert vector is not None
-                                media_records.append(
+                                enqueue(
+                                    embedding_input,
                                     {
                                         "kind": "combined",
                                         "start": window.start,
                                         "end": window.end,
-                                        "vector": vector,
+                                        "vector": None,
                                         "metadata": {
                                             "modalities": ["video", "ocr"],
                                             "profile_preset": preset,
                                         },
-                                    }
+                                    },
                                 )
-                                combined_count += 1
                     finally:
                         for image in images:
                             image.close()
-                        for path in decoded.paths:
-                            path.unlink(missing_ok=True)
-                        frame_dir.rmdir()
+                        cleanup_paths.update(decoded.paths)
                 elif options.combined_media_text:
                     for audio_input in audio_inputs:
                         if not audio_input["transcript"]:
                             continue
                         audio_window = audio_input["window"]
-                        vector, failure = await self._try_embed_combined(
-                            document_embedding_text(
+                        embedding_input = MediaEmbeddingInput(
+                            text=document_embedding_text(
                                 None, "\n".join(audio_input["transcript"])
                             ),
-                            kind="ingestion",
                             audio_path=audio_input["path"],
                         )
-                        if failure:
-                            combined_context_failures.append(failure)
-                            continue
-                        assert vector is not None
-                        media_records.append(
+                        enqueue(
+                            embedding_input,
                             {
                                 "kind": "combined",
                                 "start": audio_window.start,
                                 "end": audio_window.end,
-                                "vector": vector,
+                                "vector": None,
                                 "metadata": {
                                     "modalities": ["audio", "transcript"],
                                     "profile_preset": preset,
                                 },
-                            }
+                            },
                         )
-                        combined_count += 1
-                for audio_input in audio_inputs:
-                    audio_input["path"].unlink(missing_ok=True)
+                cleanup_paths.update(item["path"] for item in audio_inputs)
+                await flush()
+            await flush(force=True)
+        combined_count = sum(record["kind"] == "combined" for record in media_records)
 
         versions = {
             "ffprobe": probe.ffprobe_version,

@@ -18,6 +18,7 @@ from search_anything.embeddings import (
     MODEL_REVISION,
     ContextLimitError,
     LocalEmbeddingModel,
+    MediaEmbeddingInput,
 )
 from search_anything.embedding_client import RemoteEmbeddingModel
 from search_anything.ingestion import IngestionOptions, TextBlock
@@ -135,6 +136,39 @@ async def test_worker_against_real_http_embedding_service(tmp_path, monkeypatch)
             np.testing.assert_allclose(
                 actual, expected, rtol=1e-4, atol=1e-5, err_msg=function.__name__
             )
+        frame_paths = []
+        for index, frame in enumerate(frames):
+            path = tmp_path / f"frame-{index}.png"
+            frame.save(path)
+            frame_paths.append(path)
+        media_inputs = [
+            MediaEmbeddingInput(audio_path=audio),
+            MediaEmbeddingInput(audio_path=audio),
+            MediaEmbeddingInput(frame_paths=tuple(frame_paths)),
+            MediaEmbeddingInput(frame_paths=tuple(reversed(frame_paths))),
+            MediaEmbeddingInput(
+                text="A scene with sound",
+                audio_path=audio,
+                frame_paths=tuple(frame_paths),
+            ),
+        ]
+        expected_batch = [
+            local.embed_audio(audio),
+            local.embed_audio(audio),
+            local.embed_video(frames),
+            local.embed_video(list(reversed(frames))),
+            local.embed_combined(
+                "A scene with sound", audio_path=audio, video_frames=frames
+            ),
+        ]
+        actual_batch = await worker._submit_media_batch(media_inputs, kind="ingestion")
+        assert all(failure is None for _, failure in actual_batch)
+        np.testing.assert_allclose(
+            [vector for vector, _ in actual_batch], expected_batch, rtol=1e-4, atol=1e-5
+        )
+        np.testing.assert_allclose(
+            local.embed_media_batch(media_inputs), expected_batch, rtol=1e-4, atol=1e-5
+        )
         remote = worker._embedding_model
         assert isinstance(remote, RemoteEmbeddingModel)
         assert not hasattr(remote, "model")

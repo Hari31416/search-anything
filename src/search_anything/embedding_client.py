@@ -18,6 +18,7 @@ from search_anything.embeddings import (
     MODEL_REVISION,
     ContextLimitError,
     EmbeddingError,
+    MediaEmbeddingInput,
     audio_window_duration,
 )
 
@@ -147,11 +148,22 @@ class RemoteEmbeddingModel:
                 self.batch_size = min(batch_size, int(limits["max_batch_size"]))
                 self.max_upload_bytes = int(limits["max_upload_bytes"])
                 self.max_video_frames = int(limits["max_video_frames"])
+                self.max_request_bytes = int(
+                    limits.get("max_embedding_request_bytes", 104857600)
+                )
             except (KeyError, ValueError, TypeError) as exc:
                 raise EmbeddingContractError(
                     "embedding service reported invalid limits"
                 ) from exc
-            if min(self.batch_size, self.max_upload_bytes, self.max_video_frames) <= 0:
+            if (
+                min(
+                    self.batch_size,
+                    self.max_upload_bytes,
+                    self.max_video_frames,
+                    self.max_request_bytes,
+                )
+                <= 0
+            ):
                 raise EmbeddingContractError(
                     "embedding service reported invalid limits"
                 )
@@ -262,20 +274,42 @@ class RemoteEmbeddingModel:
             return {"data": {"payload": json.dumps(payload)}, "files": files}
         return {"json": payload}
 
+    def _request_batches(self, parts: list[list[dict[str, Any]]]):
+        items = []
+        inputs = None
+        for value in parts:
+            candidate = [*items, {"id": str(len(items)), "parts": value}]
+            candidate_inputs = self._request_inputs(candidate)
+            request = self._client.build_request(
+                "POST", "v1/embeddings", **candidate_inputs
+            )
+            fits = (
+                len(candidate) <= self.batch_size
+                and len(candidate_inputs.get("files", {})) <= 128
+                and int(request.headers["content-length"]) <= self.max_request_bytes
+            )
+            if not fits and items:
+                yield items, inputs
+                candidate = [{"id": "0", "parts": value}]
+                candidate_inputs = self._request_inputs(candidate)
+                request = self._client.build_request(
+                    "POST", "v1/embeddings", **candidate_inputs
+                )
+            if (
+                len(candidate_inputs.get("files", {})) > 128
+                or int(request.headers["content-length"]) > self.max_request_bytes
+            ):
+                raise EmbeddingInputError("prepared item exceeds service request limit")
+            items, inputs = candidate, candidate_inputs
+        if items:
+            yield items, inputs
+
     def _embed(self, parts: list[list[dict[str, Any]]]) -> list[list[float]]:
         if not parts:
             return []
         result = []
-        for offset in range(0, len(parts), self.batch_size):
-            items = [
-                {"id": str(i), "parts": value}
-                for i, value in enumerate(parts[offset : offset + self.batch_size])
-            ]
-            data = self._request(
-                "POST",
-                "v1/embeddings",
-                **self._request_inputs(items),
-            )
+        for items, inputs in self._request_batches(parts):
+            data = self._request("POST", "v1/embeddings", **inputs)
             if (
                 data.get("model") != MODEL_ID
                 or data.get("revision") != MODEL_REVISION
@@ -331,6 +365,26 @@ class RemoteEmbeddingModel:
         return self._embed(
             [[{"type": "media", "file": self._image_file(image)}] for image in images]
         )
+
+    def embed_media_batch(
+        self, inputs: Sequence[MediaEmbeddingInput]
+    ) -> list[list[float]]:
+        parts = []
+        for item in inputs:
+            value = []
+            if item.text:
+                value.append({"type": "text", "text": item.text})
+            if item.audio_path is not None:
+                value.append(self._audio_part(item.audio_path))
+            if item.frame_paths:
+                with item.open_frames() as frames:
+                    value.append(self._frames_part(frames))
+            if not item.paths:
+                raise EmbeddingInputError(
+                    "media embedding requires audio or video frames"
+                )
+            parts.append(value)
+        return self._embed(parts)
 
     def embed_audio(self, audio_path: Path) -> list[float]:
         return self._embed([[self._audio_part(audio_path)]])[0]

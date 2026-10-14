@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import wave
+from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence, Protocol
 
@@ -47,6 +49,31 @@ class TextTokenCounter(Protocol):
     def count_text_tokens(self, text: str) -> int: ...
 
     def text_token_offsets(self, text: str) -> list[tuple[int, int]]: ...
+
+
+@dataclass(frozen=True)
+class MediaEmbeddingInput:
+    audio_path: Path | None = None
+    frame_paths: tuple[Path, ...] = ()
+    text: str | None = None
+
+    @contextmanager
+    def open_frames(self):
+        from PIL import Image
+
+        images = []
+        try:
+            for path in self.frame_paths:
+                with Image.open(path) as image:
+                    images.append(image.convert("RGB"))
+            yield images
+        finally:
+            for image in images:
+                image.close()
+
+    @property
+    def paths(self) -> tuple[Path, ...]:
+        return (*((self.audio_path,) if self.audio_path else ()), *self.frame_paths)
 
 
 class LocalEmbeddingModel:
@@ -126,6 +153,35 @@ class LocalEmbeddingModel:
         for image in images:
             self._processed(image)
         return self._encode(images)
+
+    def embed_media_batch(
+        self, inputs: Sequence[MediaEmbeddingInput]
+    ) -> list[list[float]]:
+        from contextlib import ExitStack
+
+        with ExitStack() as stack:
+            values = []
+            for item in inputs:
+                frames = stack.enter_context(item.open_frames())
+                value: dict[str, Any] = {}
+                markers = []
+                if item.audio_path is not None:
+                    audio_window_duration(item.audio_path)
+                    value["audio"] = str(item.audio_path)
+                    markers.append("<|audio|>")
+                if frames:
+                    value["video"] = [frames]
+                    markers.append("<|video|>")
+                if not markers:
+                    raise EmbeddingError(
+                        "media embedding requires audio or video frames"
+                    )
+                value["text"] = " ".join(
+                    [item.text.strip() if item.text else "", *markers]
+                ).strip()
+                self._processed(value)
+                values.append(value)
+            return self._encode(values) if values else []
 
     def embed_audio(self, audio_path: Path) -> list[float]:
         audio_window_duration(audio_path)
